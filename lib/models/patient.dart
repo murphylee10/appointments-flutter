@@ -1,6 +1,8 @@
 class Patient {
   final int? id;
-  final String fullName;
+  final String firstName;
+  final String? middleName;
+  final String lastName;
   final String gender;
   final String dob; // Store date as a string for simplicity
   final String email;
@@ -8,7 +10,9 @@ class Patient {
 
   Patient({
     this.id,
-    required this.fullName,
+    required this.firstName,
+    this.middleName,
+    required this.lastName,
     required this.gender,
     required this.dob,
     required this.email,
@@ -20,7 +24,9 @@ class Patient {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'full_name': fullName,
+      'first_name': firstName,
+      'middle_name': middleName,
+      'last_name': lastName,
       'gender': gender,
       'dob': dob,
       'email': email,
@@ -32,6 +38,6 @@ class Patient {
   // each patient when using the print statement.
   @override
   String toString() {
-    return 'Patient{id: $id, fullName: $fullName, gender: $gender, dob: $dob, email: $email, phone: $phone}';
+    return 'Patient{id: $id, firstName: $firstName, middleName: $middleName, lastName: $lastName, gender: $gender, dob: $dob, email: $email, phone: $phone}';
   }
 }

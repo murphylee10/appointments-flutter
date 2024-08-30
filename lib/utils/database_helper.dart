@@ -23,7 +23,16 @@ class DatabaseHelper {
       path,
       onCreate: (db, version) {
         return db.execute(
-          'CREATE TABLE patients(id INTEGER PRIMARY KEY, full_name TEXT, gender TEXT, dob TEXT, email TEXT, phone TEXT)',
+          'CREATE TABLE patients('
+          'id INTEGER PRIMARY KEY, '
+          'first_name TEXT, '
+          'middle_name TEXT, '
+          'last_name TEXT, '
+          'gender TEXT, '
+          'dob TEXT, '
+          'email TEXT, '
+          'phone TEXT'
+          ')',
         );
       },
       version: 1,
@@ -55,7 +64,9 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) {
       return Patient(
         id: maps[i]['id'],
-        fullName: maps[i]['full_name'],
+        firstName: maps[i]['first_name'],
+        middleName: maps[i]['middle_name'],
+        lastName: maps[i]['last_name'],
         gender: maps[i]['gender'],
         dob: maps[i]['dob'],
         email: maps[i]['email'],

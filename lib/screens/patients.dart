@@ -25,7 +25,9 @@ class _PatientsScreenState extends State<PatientsScreen> {
   }
 
   Future<void> _showAddPatientDialog() async {
-    final fullNameController = TextEditingController();
+    final firstNameController = TextEditingController();
+    final middleNameController = TextEditingController();
+    final lastNameController = TextEditingController();
     final genderController = TextEditingController();
     final dobController = TextEditingController();
     final emailController = TextEditingController();
@@ -40,8 +42,16 @@ class _PatientsScreenState extends State<PatientsScreen> {
             child: Column(
               children: <Widget>[
                 TextField(
-                  controller: fullNameController,
-                  decoration: const InputDecoration(labelText: 'Full Name'),
+                  controller: firstNameController,
+                  decoration: const InputDecoration(labelText: 'First Name'),
+                ),
+                TextField(
+                  controller: middleNameController,
+                  decoration: const InputDecoration(labelText: 'Middle Name'),
+                ),
+                TextField(
+                  controller: lastNameController,
+                  decoration: const InputDecoration(labelText: 'Last Name'),
                 ),
                 TextField(
                   controller: genderController,
@@ -73,7 +83,11 @@ class _PatientsScreenState extends State<PatientsScreen> {
               child: const Text('Save'),
               onPressed: () async {
                 final newPatient = Patient(
-                  fullName: fullNameController.text,
+                  firstName: firstNameController.text,
+                  middleName: middleNameController.text.isEmpty
+                      ? null
+                      : middleNameController.text,
+                  lastName: lastNameController.text,
                   gender: genderController.text,
                   dob: dobController.text,
                   email: emailController.text,
@@ -109,8 +123,9 @@ class _PatientsScreenState extends State<PatientsScreen> {
             final patients = snapshot.data!;
             return DataTable(
               columns: const <DataColumn>[
-                DataColumn(label: Text('ID')),
-                DataColumn(label: Text('Full Name')),
+                DataColumn(label: Text('First Name')),
+                DataColumn(label: Text('Middle Name')),
+                DataColumn(label: Text('Last Name')),
                 DataColumn(label: Text('Gender')),
                 DataColumn(label: Text('DOB')),
                 DataColumn(label: Text('Email')),
@@ -119,8 +134,9 @@ class _PatientsScreenState extends State<PatientsScreen> {
               rows: patients.map((patient) {
                 return DataRow(
                   cells: <DataCell>[
-                    DataCell(Text(patient.id?.toString() ?? '')),
-                    DataCell(Text(patient.fullName)),
+                    DataCell(Text(patient.firstName)),
+                    DataCell(Text(patient.middleName ?? '')),
+                    DataCell(Text(patient.lastName)),
                     DataCell(Text(patient.gender)),
                     DataCell(Text(patient.dob)),
                     DataCell(Text(patient.email)),
