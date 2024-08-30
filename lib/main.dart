@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'screens/patients.dart';
 import 'screens/appointments.dart';
 import 'widgets/sidebar.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  sqfliteFfiInit();
+
+  databaseFactory = databaseFactoryFfi;
+
   runApp(const MyApp());
 }
 
