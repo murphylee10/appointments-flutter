@@ -18,8 +18,9 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
+    final path = join(await getDatabasesPath(), 'chiropractic_app.db');
     return openDatabase(
-      join(await getDatabasesPath(), 'chiropractic_app.db'),
+      path,
       onCreate: (db, version) {
         return db.execute(
           'CREATE TABLE patients(id INTEGER PRIMARY KEY, full_name TEXT, gender TEXT, dob TEXT, email TEXT, phone TEXT)',
