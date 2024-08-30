@@ -17,7 +17,7 @@ samples, guidance on mobile development, and a full API reference.
 
 Todos:
 - [ ] Default fullscreen
-- [ ] Schema change for patients (first name, middle name, last name)
+- [x] Schema change for patients (first name, middle name, last name)
 - [ ] Make entries for patients selectable
 - [ ] Search bar
 - [ ] Scrollview or pagination? idk yet
