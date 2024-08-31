@@ -15,6 +15,10 @@ clean:
 get:
 	flutter pub get
 
+.PHONY: create
+create:
+	flutter create .
+	
 # analyze dart code for issues
 .PHONY: analyze
 analyze:
