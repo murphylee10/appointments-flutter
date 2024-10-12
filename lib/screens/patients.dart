@@ -43,6 +43,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
               children: <Widget>[
                 TextField(
                   controller: firstNameController,
+                  autofocus: true,
                   decoration: const InputDecoration(labelText: 'First Name'),
                 ),
                 TextField(
