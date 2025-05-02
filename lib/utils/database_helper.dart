@@ -1,6 +1,7 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/patient.dart';
+import '../models/appointment.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -21,8 +22,8 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'chiropractic_app.db');
     return openDatabase(
       path,
-      onCreate: (db, version) {
-        return db.execute(
+      onCreate: (db, version) async {
+        await db.execute(
           'CREATE TABLE patients('
           'id INTEGER PRIMARY KEY, '
           'first_name TEXT, '
@@ -34,12 +35,20 @@ class DatabaseHelper {
           'phone TEXT'
           ')',
         );
+        await db.execute(
+          'CREATE TABLE appointments('
+          'id INTEGER PRIMARY KEY, '
+          'patient_id INTEGER, '
+          'datetime TEXT, '
+          'notes TEXT, '
+          'FOREIGN KEY(patient_id) REFERENCES patients(id)'
+          ')',
+        );
       },
       version: 1,
     );
   }
 
-  // Close the database
   Future<void> close() async {
     final db = await database;
     db.close();
@@ -48,7 +57,6 @@ class DatabaseHelper {
   /* PATIENT CRUD */
   Future<void> insertPatient(Patient patient) async {
     final db = await database;
-
     await db.insert(
       'patients',
       patient.toMap(),
@@ -58,9 +66,7 @@ class DatabaseHelper {
 
   Future<List<Patient>> getPatients() async {
     final db = await database;
-
     final List<Map<String, dynamic>> maps = await db.query('patients');
-
     return List.generate(maps.length, (i) {
       return Patient(
         id: maps[i]['id'],
@@ -77,7 +83,6 @@ class DatabaseHelper {
 
   Future<void> updatePatient(Patient patient) async {
     final db = await database;
-
     await db.update(
       'patients',
       patient.toMap(),
@@ -88,9 +93,50 @@ class DatabaseHelper {
 
   Future<void> deletePatient(int id) async {
     final db = await database;
-
     await db.delete(
       'patients',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /* APPOINTMENT CRUD */
+  Future<void> insertAppointment(Appointment appointment) async {
+    final db = await database;
+    await db.insert(
+      'appointments',
+      appointment.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Appointment>> getAppointments() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('appointments');
+    return List.generate(maps.length, (i) {
+      return Appointment(
+        id: maps[i]['id'],
+        patientId: maps[i]['patient_id'],
+        dateTime: DateTime.parse(maps[i]['datetime']),
+        notes: maps[i]['notes'],
+      );
+    });
+  }
+
+  Future<void> updateAppointment(Appointment appointment) async {
+    final db = await database;
+    await db.update(
+      'appointments',
+      appointment.toMap(),
+      where: 'id = ?',
+      whereArgs: [appointment.id],
+    );
+  }
+
+  Future<void> deleteAppointment(int id) async {
+    final db = await database;
+    await db.delete(
+      'appointments',
       where: 'id = ?',
       whereArgs: [id],
     );
