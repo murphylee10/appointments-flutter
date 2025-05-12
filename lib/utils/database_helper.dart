@@ -2,6 +2,7 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/patient.dart';
 import '../models/appointment.dart';
+import '../models/receipt.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -41,9 +42,28 @@ class DatabaseHelper {
           'patient_id INTEGER, '
           'datetime TEXT, '
           'notes TEXT, '
+          'paid INTEGER DEFAULT 0, '
           'FOREIGN KEY(patient_id) REFERENCES patients(id)'
           ')',
         );
+        await db.execute('''
+          CREATE TABLE receipts(
+            id INTEGER PRIMARY KEY,
+            patient_id INTEGER,
+            datetime TEXT,
+            file_path TEXT,
+            FOREIGN KEY(patient_id) REFERENCES patients(id)
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE receipt_items(
+            id INTEGER PRIMARY KEY,
+            receipt_id INTEGER,
+            appointment_id INTEGER,
+            FOREIGN KEY(receipt_id) REFERENCES receipts(id) ON DELETE CASCADE,
+            FOREIGN KEY(appointment_id) REFERENCES appointments(id)
+          )
+        ''');
       },
       version: 1,
     );
@@ -113,14 +133,7 @@ class DatabaseHelper {
   Future<List<Appointment>> getAppointments() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('appointments');
-    return List.generate(maps.length, (i) {
-      return Appointment(
-        id: maps[i]['id'],
-        patientId: maps[i]['patient_id'],
-        dateTime: DateTime.parse(maps[i]['datetime']),
-        notes: maps[i]['notes'],
-      );
-    });
+    return maps.map((row) => Appointment.fromMap(row)).toList();
   }
 
   Future<void> updateAppointment(Appointment appointment) async {
@@ -133,6 +146,15 @@ class DatabaseHelper {
     );
   }
 
+  Future<void> updateAppointmentPaid(int id, bool paid) async {
+    final db = await database;
+    await db.update(
+      'appointments',
+      {'paid': paid ? 1 : 0},
+      where: 'id = ?', whereArgs: [id],
+    );
+  }
+
   Future<void> deleteAppointment(int id) async {
     final db = await database;
     await db.delete(
@@ -140,5 +162,41 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<int> insertReceipt(Receipt receipt) async {
+    final db = await database;
+    return await db.transaction((txn) async {
+      final rid = await txn.insert('receipts', {
+        'patient_id': receipt.patientId,
+        'datetime': receipt.dateTime.toIso8601String(),
+        'file_path': receipt.filePath,
+      });
+      for (var aid in receipt.appointmentIds) {
+        await txn.insert('receipt_items', {
+          'receipt_id': rid,
+          'appointment_id': aid,
+        });
+      }
+      return rid;
+    });
+  }
+
+  Future<List<Receipt>> getReceipts() async {
+    final db = await database;
+    final recRows = await db.query('receipts', orderBy: 'datetime DESC');
+    final List<Receipt> list = [];
+    for (var row in recRows) {
+      final rid = row['id'] as int;
+      final items = await db.query(
+        'receipt_items',
+        columns: ['appointment_id'],
+        where: 'receipt_id = ?',
+        whereArgs: [rid],
+      );
+      final aids = items.map((r) => r['appointment_id'] as int).toList();
+      list.add(Receipt.fromMap(row, aids));
+    }
+    return list;
   }
 }

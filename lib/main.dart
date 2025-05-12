@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/patients.dart';
 import 'screens/appointments.dart';
+import 'screens/receipts.dart';
 import 'widgets/sidebar.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -105,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const List<Widget> _widgetOptions = <Widget>[
     PatientsScreen(),
     AppointmentsScreen(),
+    ReceiptsScreen(),
   ];
 
   void _onItemTapped(int index) {

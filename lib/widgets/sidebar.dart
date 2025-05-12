@@ -30,6 +30,12 @@ class Sidebar extends StatelessWidget {
             selected: selectedIndex == 1,
             onTap: () => onItemTapped(1),
           ),
+          ListTile(
+            leading: const Icon(Icons.receipt_long),
+            title: const Text('Receipts'),
+            selected: selectedIndex == 2,
+            onTap: () => onItemTapped(2),
+          ),
         ],
       ),
     );

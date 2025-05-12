@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utils/database_helper.dart';
 import '../models/patient.dart';
+import 'billing_history.dart';
 
 class PatientsScreen extends StatefulWidget {
   const PatientsScreen({super.key});
@@ -24,7 +25,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
   void initState() {
     super.initState();
     _load();
-    _searchController.addListener(_filter);
+    _searchController.addListener(_applyFilter);
   }
 
   @override
@@ -36,26 +37,21 @@ class _PatientsScreenState extends State<PatientsScreen> {
   }
 
   Future<void> _load() async {
-    final list = await DatabaseHelper().getPatients();
-    setState(() {
-      _all = list;
-      _filter();
-    });
+    _all = await DatabaseHelper().getPatients();
+    _applyFilter();
   }
 
-  void _filter() {
+  void _applyFilter() {
     final q = _searchController.text.toLowerCase();
     setState(() {
-      if (q.isEmpty) {
-        _filtered = List.from(_all);
-      } else {
-        _filtered = _all.where((p) {
-          return p.firstName.toLowerCase().contains(q) ||
-                 p.lastName.toLowerCase().contains(q)  ||
-                 p.email.toLowerCase().contains(q)     ||
-                 p.phone.toLowerCase().contains(q);
-        }).toList();
-      }
+      _filtered = q.isEmpty
+        ? List.from(_all)
+        : _all.where((p) =>
+            p.firstName.toLowerCase().contains(q) ||
+            p.lastName.toLowerCase().contains(q) ||
+            p.email.toLowerCase().contains(q) ||
+            p.phone.toLowerCase().contains(q)
+          ).toList();
     });
   }
 
@@ -70,15 +66,13 @@ class _PatientsScreenState extends State<PatientsScreen> {
 
     final content = await File(path).readAsString();
     final rows = const CsvToListConverter().convert(content, eol: '\n');
-
     if (rows.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('CSV contains no rows.')),
+        const SnackBar(content: Text('CSV contains no data.')),
       );
       return;
     }
 
-    // Skip header row; expect 7 columns per row
     for (var i = 1; i < rows.length; i++) {
       final row = rows[i];
       if (row.length < 7) continue;
@@ -115,83 +109,82 @@ class _PatientsScreenState extends State<PatientsScreen> {
     final email = TextEditingController(text: patient?.email);
     final phone = TextEditingController(text: patient?.phone);
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
       builder: (_) => StatefulBuilder(
         builder: (c, setState) => AlertDialog(
           title: Text(isNew ? 'Add Patient' : 'Edit Patient'),
           content: Form(
             key: fk,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: fn,
-                  decoration: const InputDecoration(labelText: 'First Name'),
-                  validator: (v) => v?.isEmpty == true ? 'Required' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: mn,
-                  decoration: const InputDecoration(labelText: 'Middle Name'),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: ln,
-                  decoration: const InputDecoration(labelText: 'Last Name'),
-                  validator: (v) => v?.isEmpty == true ? 'Required' : null,
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: gender,
-                  decoration: const InputDecoration(labelText: 'Gender'),
-                  items: ['M', 'F', 'O']
-                      .map((g) => DropdownMenuItem(value: g, child: Text(g)))
-                      .toList(),
-                  onChanged: (v) => setState(() => gender = v),
-                  validator: (v) => v == null ? 'Required' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: dob,
-                  decoration:
-                      const InputDecoration(labelText: 'Date of Birth'),
-                  readOnly: true,
-                  onTap: () async {
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: patient != null
-                          ? DateTime.parse(patient.dob)
-                          : DateTime(2000, 1, 1),
-                      firstDate: DateTime(1900),
-                      lastDate: DateTime.now(),
-                    );
-                    if (d != null) {
-                      dob.text = DateFormat('yyyy-MM-dd').format(d);
-                      setState(() {});
-                    }
-                  },
-                  validator: (v) => v?.isEmpty == true ? 'Required' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: email,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  validator: (v) => v?.isEmpty == true ? 'Required' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: phone,
-                  decoration: const InputDecoration(labelText: 'Phone'),
-                  validator: (v) => v?.isEmpty == true ? 'Required' : null,
-                ),
-              ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: fn,
+                    decoration: const InputDecoration(labelText: 'First Name'),
+                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: mn,
+                    decoration: const InputDecoration(labelText: 'Middle Name'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: ln,
+                    decoration: const InputDecoration(labelText: 'Last Name'),
+                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: gender,
+                    decoration: const InputDecoration(labelText: 'Gender'),
+                    items: ['M', 'F', 'O']
+                        .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                        .toList(),
+                    onChanged: (v) => setState(() => gender = v),
+                    validator: (v) => v == null ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: dob,
+                    decoration: const InputDecoration(labelText: 'Date of Birth'),
+                    readOnly: true,
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: patient != null
+                            ? DateTime.parse(patient.dob)
+                            : DateTime(2000, 1, 1),
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                      );
+                      if (d != null) {
+                        dob.text = DateFormat('yyyy-MM-dd').format(d);
+                        setState(() {});
+                      }
+                    },
+                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: email,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: phone,
+                    decoration: const InputDecoration(labelText: 'Phone'),
+                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () async {
                 if (!fk.currentState!.validate()) return;
@@ -219,7 +212,6 @@ class _PatientsScreenState extends State<PatientsScreen> {
         ),
       ),
     );
-    // no manual dispose here
   }
 
   Future<void> _confirmDelete(Patient p) async {
@@ -229,12 +221,8 @@ class _PatientsScreenState extends State<PatientsScreen> {
         title: const Text('Delete Patient'),
         content: Text('Delete ${p.firstName} ${p.lastName}?'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
         ],
       ),
     );
@@ -279,7 +267,8 @@ class _PatientsScreenState extends State<PatientsScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            // Two-direction scroll with attached controllers
+
+            // Patients table
             Expanded(
               child: Scrollbar(
                 controller: _vController,
@@ -298,8 +287,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                         child: DataTable(
                           columnSpacing: 12,
                           horizontalMargin: 12,
-                          headingRowColor:
-                              MaterialStateProperty.all(Colors.grey[200]),
+                          headingRowColor: MaterialStateProperty.all(Colors.grey[200]),
                           columns: const [
                             DataColumn(label: Text('First')),
                             DataColumn(label: Text('Middle')),
@@ -310,27 +298,34 @@ class _PatientsScreenState extends State<PatientsScreen> {
                             DataColumn(label: Text('Phone')),
                             DataColumn(label: Text('Actions')),
                           ],
-                          rows: _filtered.map((p) {
+                          rows: _filtered.map((patient) {
                             return DataRow(cells: [
-                              DataCell(Text(p.firstName)),
-                              DataCell(Text(p.middleName ?? '')),
-                              DataCell(Text(p.lastName)),
-                              DataCell(Text(p.gender)),
-                              DataCell(Text(p.dob)),
-                              DataCell(Text(p.email)),
-                              DataCell(Text(p.phone)),
+                              DataCell(Text(patient.firstName)),
+                              DataCell(Text(patient.middleName ?? '')),
+                              DataCell(Text(patient.lastName)),
+                              DataCell(Text(patient.gender)),
+                              DataCell(Text(patient.dob)),
+                              DataCell(Text(patient.email)),
+                              DataCell(Text(patient.phone)),
                               DataCell(Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    icon:
-                                        const Icon(Icons.edit, size: 20),
-                                    onPressed: () => _showForm(patient: p),
+                                    icon: const Icon(Icons.history, size: 20),
+                                    tooltip: 'Billing History',
+                                    onPressed: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => BillingHistoryPage(patient: patient),
+                                      ),
+                                    ),
                                   ),
                                   IconButton(
-                                    icon:
-                                        const Icon(Icons.delete, size: 20),
-                                    onPressed: () => _confirmDelete(p),
+                                    icon: const Icon(Icons.edit, size: 20),
+                                    onPressed: () => _showForm(patient: patient),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, size: 20),
+                                    onPressed: () => _confirmDelete(patient),
                                   ),
                                 ],
                               )),
