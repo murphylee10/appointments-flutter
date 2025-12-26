@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utils/database_helper.dart';
 import '../models/patient.dart';
+import '../theme/app_theme.dart';
 import 'billing_history.dart';
+import 'patient_profile.dart';
 
 class PatientsScreen extends StatefulWidget {
   const PatientsScreen({super.key});
@@ -49,8 +51,8 @@ class _PatientsScreenState extends State<PatientsScreen> {
         : _all.where((p) =>
             p.firstName.toLowerCase().contains(q) ||
             p.lastName.toLowerCase().contains(q) ||
-            p.email.toLowerCase().contains(q) ||
-            p.phone.toLowerCase().contains(q)
+            (p.email?.toLowerCase().contains(q) ?? false) ||
+            (p.phone?.toLowerCase().contains(q) ?? false)
           ).toList();
     });
   }
@@ -102,22 +104,25 @@ class _PatientsScreenState extends State<PatientsScreen> {
     final ln = TextEditingController(text: patient?.lastName);
     String? gender = patient?.gender;
     final dob = TextEditingController(
-      text: patient != null
-          ? DateFormat('yyyy-MM-dd').format(DateTime.parse(patient.dob))
+      text: patient?.dob != null && patient!.dob!.isNotEmpty
+          ? DateFormat('yyyy-MM-dd').format(DateTime.parse(patient.dob!))
           : '',
     );
     final email = TextEditingController(text: patient?.email);
     final phone = TextEditingController(text: patient?.phone);
+    final address = TextEditingController(text: patient?.address);
 
     await showDialog<void>(
       context: context,
       builder: (_) => StatefulBuilder(
         builder: (c, setState) => AlertDialog(
           title: Text(isNew ? 'Add Patient' : 'Edit Patient'),
-          content: Form(
-            key: fk,
-            child: SingleChildScrollView(
-              child: Column(
+          content: SizedBox(
+            width: 400,
+            child: Form(
+              key: fk,
+              child: SingleChildScrollView(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextFormField(
@@ -125,28 +130,27 @@ class _PatientsScreenState extends State<PatientsScreen> {
                     decoration: const InputDecoration(labelText: 'First Name'),
                     validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.md),
                   TextFormField(
                     controller: mn,
                     decoration: const InputDecoration(labelText: 'Middle Name'),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.md),
                   TextFormField(
                     controller: ln,
                     decoration: const InputDecoration(labelText: 'Last Name'),
                     validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.md),
                   DropdownButtonFormField<String>(
                     value: gender,
                     decoration: const InputDecoration(labelText: 'Gender'),
-                    items: ['M', 'F', 'O']
+                    items: ['M', 'F']
                         .map((g) => DropdownMenuItem(value: g, child: Text(g)))
                         .toList(),
                     onChanged: (v) => setState(() => gender = v),
-                    validator: (v) => v == null ? 'Required' : null,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.md),
                   TextFormField(
                     controller: dob,
                     decoration: const InputDecoration(labelText: 'Date of Birth'),
@@ -154,8 +158,8 @@ class _PatientsScreenState extends State<PatientsScreen> {
                     onTap: () async {
                       final d = await showDatePicker(
                         context: context,
-                        initialDate: patient != null
-                            ? DateTime.parse(patient.dob)
+                        initialDate: patient?.dob != null && patient!.dob!.isNotEmpty
+                            ? DateTime.parse(patient.dob!)
                             : DateTime(2000, 1, 1),
                         firstDate: DateTime(1900),
                         lastDate: DateTime.now(),
@@ -165,26 +169,31 @@ class _PatientsScreenState extends State<PatientsScreen> {
                         setState(() {});
                       }
                     },
-                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.md),
                   TextFormField(
                     controller: email,
                     decoration: const InputDecoration(labelText: 'Email'),
-                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.md),
                   TextFormField(
                     controller: phone,
                     decoration: const InputDecoration(labelText: 'Phone'),
-                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                   ),
-                ],
+                  const SizedBox(height: AppSpacing.md),
+                  TextFormField(
+                    controller: address,
+                    decoration: const InputDecoration(labelText: 'Address'),
+                    maxLines: 2,
+                  ),
+                  ],
+                ),
               ),
             ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            const SizedBox(width: AppSpacing.sm),
             ElevatedButton(
               onPressed: () async {
                 if (!fk.currentState!.validate()) return;
@@ -193,10 +202,11 @@ class _PatientsScreenState extends State<PatientsScreen> {
                   firstName: fn.text,
                   middleName: mn.text.isEmpty ? null : mn.text,
                   lastName: ln.text,
-                  gender: gender!,
-                  dob: dob.text,
-                  email: email.text,
-                  phone: phone.text,
+                  gender: gender,
+                  dob: dob.text.isEmpty ? null : dob.text,
+                  email: email.text.isEmpty ? null : email.text,
+                  phone: phone.text.isEmpty ? null : phone.text,
+                  address: address.text.isEmpty ? null : address.text,
                 );
                 if (isNew) {
                   await DatabaseHelper().insertPatient(p);
@@ -218,11 +228,35 @@ class _PatientsScreenState extends State<PatientsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Patient'),
-        content: Text('Delete ${p.firstName} ${p.lastName}?'),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.errorRed, size: 24),
+            const SizedBox(width: AppSpacing.sm),
+            const Text('Delete Patient'),
+          ],
+        ),
+        content: Text.rich(
+          TextSpan(
+            text: 'Are you sure you want to delete ',
+            children: [
+              TextSpan(
+                text: '${p.firstName} ${p.lastName}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const TextSpan(text: '?'),
+            ],
+          ),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          const SizedBox(width: AppSpacing.sm),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.errorRed,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
@@ -236,101 +270,127 @@ class _PatientsScreenState extends State<PatientsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           children: [
             // Search + Add + Import
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Search name/email/phone…',
-                      border: OutlineInputBorder(),
+            Card(
+              margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search),
+                            hintText: 'Search name/email/phone…',
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: AppSpacing.md),
+                    ElevatedButton.icon(
+                      onPressed: () => _showForm(),
+                      icon: const Icon(Icons.add, size: 20),
+                      label: const Text('Add'),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    OutlinedButton.icon(
+                      onPressed: _importCsv,
+                      icon: const Icon(Icons.upload_file, size: 20),
+                      label: const Text('Import CSV'),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  onPressed: () => _showForm(),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: _importCsv,
-                  icon: const Icon(Icons.upload_file),
-                  label: const Text('Import CSV'),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 16),
 
             // Patients table
             Expanded(
-              child: Scrollbar(
-                controller: _vController,
-                thumbVisibility: true,
-                child: SingleChildScrollView(
+              child: Card(
+                child: Scrollbar(
                   controller: _vController,
-                  child: Scrollbar(
-                    controller: _hController,
-                    thumbVisibility: true,
-                    notificationPredicate: (n) => n.depth == 1,
-                    child: SingleChildScrollView(
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: _vController,
+                    child: Scrollbar(
                       controller: _hController,
-                      scrollDirection: Axis.horizontal,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minWidth: 900),
-                        child: DataTable(
-                          columnSpacing: 12,
-                          horizontalMargin: 12,
-                          headingRowColor: MaterialStateProperty.all(Colors.grey[200]),
-                          columns: const [
-                            DataColumn(label: Text('First')),
-                            DataColumn(label: Text('Middle')),
-                            DataColumn(label: Text('Last')),
-                            DataColumn(label: Text('Gender')),
-                            DataColumn(label: Text('DOB')),
-                            DataColumn(label: Text('Email')),
-                            DataColumn(label: Text('Phone')),
-                            DataColumn(label: Text('Actions')),
-                          ],
-                          rows: _filtered.map((patient) {
-                            return DataRow(cells: [
-                              DataCell(Text(patient.firstName)),
-                              DataCell(Text(patient.middleName ?? '')),
-                              DataCell(Text(patient.lastName)),
-                              DataCell(Text(patient.gender)),
-                              DataCell(Text(patient.dob)),
-                              DataCell(Text(patient.email)),
-                              DataCell(Text(patient.phone)),
-                              DataCell(Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.history, size: 20),
-                                    tooltip: 'Billing History',
-                                    onPressed: () => Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => BillingHistoryPage(patient: patient),
+                      thumbVisibility: true,
+                      notificationPredicate: (n) => n.depth == 1,
+                      child: SingleChildScrollView(
+                        controller: _hController,
+                        scrollDirection: Axis.horizontal,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minWidth: 1000),
+                          child: DataTable(
+                            showCheckboxColumn: false,
+                            columns: const [
+                              DataColumn(label: Text('First')),
+                              DataColumn(label: Text('Middle')),
+                              DataColumn(label: Text('Last')),
+                              DataColumn(label: Text('Gender')),
+                              DataColumn(label: Text('DOB')),
+                              DataColumn(label: Text('Email')),
+                              DataColumn(label: Text('Phone')),
+                              DataColumn(label: Text('Actions')),
+                            ],
+                            rows: _filtered.map((patient) {
+                              return DataRow(
+                                onSelectChanged: (_) async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => PatientProfileScreen(patient: patient),
+                                    ),
+                                  );
+                                  _load(); // Reload list to reflect any changes
+                                },
+                                cells: [
+                                DataCell(Text(patient.firstName)),
+                                DataCell(Text(patient.middleName ?? '')),
+                                DataCell(Text(patient.lastName)),
+                                DataCell(Text(patient.gender ?? '')),
+                                DataCell(Text(patient.dob ?? '')),
+                                DataCell(Text(patient.email ?? '')),
+                                DataCell(Text(patient.phone ?? '')),
+                                DataCell(Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.history, size: 20),
+                                      tooltip: 'Billing History',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => BillingHistoryPage(patient: patient),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.edit, size: 20),
-                                    onPressed: () => _showForm(patient: patient),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete, size: 20),
-                                    onPressed: () => _confirmDelete(patient),
-                                  ),
-                                ],
-                              )),
-                            ]);
-                          }).toList(),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 20),
+                                      tooltip: 'Edit Patient',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _showForm(patient: patient),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, size: 20),
+                                      tooltip: 'Delete Patient',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _confirmDelete(patient),
+                                    ),
+                                  ],
+                                )),
+                              ]);
+                            }).toList(),
+                          ),
                         ),
                       ),
                     ),

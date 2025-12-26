@@ -3,20 +3,22 @@ class Patient {
   final String firstName;
   final String? middleName;
   final String lastName;
-  final String gender;
-  final String dob; // Store date as a string for simplicity
-  final String email;
-  final String phone;
+  final String? gender;
+  final String? dob;
+  final String? email;
+  final String? phone;
+  final String? address;
 
   Patient({
     this.id,
     required this.firstName,
     this.middleName,
     required this.lastName,
-    required this.gender,
-    required this.dob,
-    required this.email,
-    required this.phone,
+    this.gender,
+    this.dob,
+    this.email,
+    this.phone,
+    this.address,
   });
 
   // Convert a Patient into a Map. The keys must correspond to the names of the
@@ -31,6 +33,7 @@ class Patient {
       'dob': dob,
       'email': email,
       'phone': phone,
+      'address': address,
     };
   }
 
@@ -38,6 +41,6 @@ class Patient {
   // each patient when using the print statement.
   @override
   String toString() {
-    return 'Patient{id: $id, firstName: $firstName, middleName: $middleName, lastName: $lastName, gender: $gender, dob: $dob, email: $email, phone: $phone}';
+    return 'Patient{id: $id, firstName: $firstName, middleName: $middleName, lastName: $lastName, gender: $gender, dob: $dob, email: $email, phone: $phone, address: $address}';
   }
 }

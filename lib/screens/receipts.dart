@@ -4,6 +4,7 @@ import '../utils/database_helper.dart';
 import '../models/receipt.dart';
 import '../models/patient.dart';
 import '../models/appointment.dart';
+import '../theme/app_theme.dart';
 
 class ReceiptsScreen extends StatefulWidget {
   const ReceiptsScreen({super.key});
@@ -45,11 +46,24 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Clear All Receipts?'),
-        content: const Text('This will delete every receipt record. Continue?'),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.errorRed, size: 24),
+            const SizedBox(width: AppSpacing.sm),
+            const Text('Clear All Receipts?'),
+          ],
+        ),
+        content: const Text('This will delete every receipt record. This action cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete All')),
+          const SizedBox(width: AppSpacing.sm),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.errorRed,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete All'),
+          ),
         ],
       ),
     );
@@ -78,49 +92,98 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
           ),
         ],
       ),
-      body: ListView.builder(
-        itemCount: _receipts.length,
-        itemBuilder: (ctx, i) {
-          final r = _receipts[i];
-          final p = _patients[r.patientId];
-          final genDate = DateFormat.yMMMd().add_jm().format(r.dateTime);
-          final unpaidExists = r.appointmentIds.any((aid) => _appointments[aid]?.paid == false);
+      body: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Card(
+          child: ListView.builder(
+            itemCount: _receipts.length,
+            itemBuilder: (ctx, i) {
+              final r = _receipts[i];
+              final p = _patients[r.patientId];
+              final genDate = DateFormat.yMMMd().add_jm().format(r.dateTime);
+              final unpaidExists = r.appointmentIds.any((aid) => _appointments[aid]?.paid == false);
 
-          return ExpansionTile(
-            title: Text('Receipt ${r.id} – ${p?.firstName} ${p?.lastName}'),
-            subtitle: Text('Date of Generation: $genDate'),
-            children: [
-              // Section header
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(
-                  'Appointments:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+              return ExpansionTile(
+                title: Text(
+                  'Receipt ${r.id} – ${p?.firstName} ${p?.lastName}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
-              ),
-
-              // List of appointments
-              ...r.appointmentIds.map((aid) {
-                final a = _appointments[aid]!;
-                final date = DateFormat.yMMMd().format(a.dateTime);
-                final time = TimeOfDay.fromDateTime(a.dateTime).format(context);
-                return ListTile(
-                  title: Text('$date @ $time'),
-                  trailing: Text(a.paid ? 'Paid' : 'Unpaid'),
-                );
-              }),
-
-              // Bulk mark-paid button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: ElevatedButton(
-                  onPressed: unpaidExists ? () => _markPaid(r) : null,
-                  child: const Text('Mark All as Paid'),
+                subtitle: Text(
+                  'Generated: $genDate',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+                children: [
+                  // Section header
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                      vertical: AppSpacing.sm,
+                    ),
+                    child: const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Appointments:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // List of appointments
+                  ...r.appointmentIds.map((aid) {
+                    final a = _appointments[aid]!;
+                    final date = DateFormat.yMMMd().format(a.dateTime);
+                    final time = TimeOfDay.fromDateTime(a.dateTime).format(context);
+                    return ListTile(
+                      title: Text('$date @ $time'),
+                      trailing: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm,
+                          vertical: AppSpacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: a.paid
+                              ? AppColors.successGreen.withOpacity(0.1)
+                              : AppColors.warningAmber.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                        ),
+                        child: Text(
+                          a.paid ? 'Paid' : 'Unpaid',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: a.paid ? AppColors.successGreen : AppColors.warningAmber,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+
+                  // Bulk mark-paid button
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                      vertical: AppSpacing.md,
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: ElevatedButton.icon(
+                        onPressed: unpaidExists ? () => _markPaid(r) : null,
+                        icon: const Icon(Icons.check_circle_outline, size: 20),
+                        label: const Text('Mark All as Paid'),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }

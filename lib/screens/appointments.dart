@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../utils/database_helper.dart';
 import '../models/appointment.dart';
 import '../models/patient.dart';
+import '../theme/app_theme.dart';
 
 /// A SearchDelegate to find patients by name/email/phone.
 class PatientSearchDelegate extends SearchDelegate<Patient?> {
@@ -36,8 +37,8 @@ class PatientSearchDelegate extends SearchDelegate<Patient?> {
     final matches = patients.where((p) {
       return p.firstName.toLowerCase().contains(q) ||
           p.lastName.toLowerCase().contains(q) ||
-          p.email.toLowerCase().contains(q) ||
-          p.phone.toLowerCase().contains(q);
+          (p.email?.toLowerCase().contains(q) ?? false) ||
+          (p.phone?.toLowerCase().contains(q) ?? false);
     }).toList();
 
     return ListView.builder(
@@ -118,9 +119,11 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       builder: (_) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: Text('Add to ${slot.format(context)}'),
-          content: Form(
-            key: formKey,
-            child: TextFormField(
+          content: SizedBox(
+            width: 400,
+            child: Form(
+              key: formKey,
+              child: TextFormField(
               controller: patientController,
               readOnly: true,
               decoration: InputDecoration(
@@ -143,6 +146,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                   setState(() {});
                 }
               },
+              ),
             ),
           ),
           actions: [
@@ -150,6 +154,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
+            const SizedBox(width: AppSpacing.sm),
             ElevatedButton(
               onPressed: () async {
                 if (!formKey.currentState!.validate()) return;
@@ -185,20 +190,25 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     return Scaffold(
       // AppBar is provided by HomeScreen
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           children: [
             // 1) Calendar picker
-            CalendarDatePicker(
-              initialDate: _selectedDate,
-              firstDate: DateTime.now().subtract(const Duration(days: 365)),
-              lastDate: DateTime.now().add(const Duration(days: 365)),
-              onDateChanged: (d) {
-                _selectedDate = d;
-                _loadAppointments();
-              },
+            Card(
+              margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: CalendarDatePicker(
+                  initialDate: _selectedDate,
+                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                  onDateChanged: (d) {
+                    _selectedDate = d;
+                    _loadAppointments();
+                  },
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
 
             // 2) Timeslot list
             Expanded(
@@ -211,14 +221,25 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                         a.dateTime.minute == slot.minute;
                   }).toList();
 
+                  final hasAppointments = slotAppointments.isNotEmpty;
+                  final primaryColor = Theme.of(context).colorScheme.primary;
+
                   return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Padding(
+                    margin: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(
+                            color: hasAppointments ? primaryColor : Colors.transparent,
+                            width: 4,
+                          ),
+                        ),
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
+                      ),
                       padding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 16),
+                        vertical: AppSpacing.md,
+                        horizontal: AppSpacing.lg,
+                      ),
                       child: Row(
                         children: [
                           // Fixed-width, right-aligned time
@@ -228,25 +249,26 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                               slot.format(context),
                               textAlign: TextAlign.right,
                               style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: slotAppointments.isEmpty
-                                    ? Colors.grey[600]
-                                    : Theme.of(context)
-                                        .colorScheme
-                                        .primary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: hasAppointments
+                                    ? primaryColor
+                                    : AppColors.textSecondary,
                               ),
                             ),
                           ),
 
-                          const SizedBox(width: 16),
+                          const SizedBox(width: AppSpacing.lg),
 
-                          // Slot details: multiple patients or “No one booked”
+                          // Slot details: multiple patients or "No one booked"
                           Expanded(
                             child: slotAppointments.isEmpty
-                                ? Text(
+                                ? const Text(
                                     'No one booked',
                                     style: TextStyle(
-                                        color: Colors.grey[600]),
+                                      fontSize: 14,
+                                      color: AppColors.textSecondary,
+                                    ),
                                   )
                                 : Column(
                                     crossAxisAlignment:
@@ -258,19 +280,28 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                                           ? '${pat.firstName} ${pat.lastName}'
                                           : 'Unknown';
                                       return Padding(
-                                        padding: const EdgeInsets
-                                                .symmetric(
-                                            vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: AppSpacing.xs,
+                                        ),
                                         child: Row(
                                           children: [
-                                            Expanded(child: Text(name)),
+                                            Expanded(
+                                              child: Text(
+                                                name,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
                                             IconButton(
                                               icon: const Icon(
-                                                  Icons.delete,
-                                                  size: 20),
+                                                Icons.delete,
+                                                size: 20,
+                                              ),
+                                              tooltip: 'Delete Appointment',
                                               onPressed: () =>
-                                                  _deleteAppointment(
-                                                      a.id!),
+                                                  _deleteAppointment(a.id!),
                                             ),
                                           ],
                                         ),
@@ -279,13 +310,14 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                                   ),
                           ),
 
-                          // Always-visible “add” button
+                          // Always-visible "add" button
                           IconButton(
                             icon: const Icon(
-                                Icons.add_circle_outline),
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary,
+                              Icons.add_circle_outline,
+                              size: 24,
+                            ),
+                            tooltip: 'Add Appointment',
+                            color: primaryColor,
                             onPressed: () =>
                                 _showAddAppointmentDialog(slot),
                           ),

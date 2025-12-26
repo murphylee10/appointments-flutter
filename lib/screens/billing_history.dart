@@ -6,6 +6,7 @@ import '../utils/database_helper.dart';
 import '../models/patient.dart';
 import '../models/appointment.dart';
 import '../utils/receipt_helper.dart';
+import '../theme/app_theme.dart';
 
 
 /// Full-screen billing history with grouping, edit/save, and receipt export
@@ -65,29 +66,21 @@ class _BillingHistoryPageState extends State<BillingHistoryPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.patient.firstName} ${widget.patient.lastName} History'),
-        // Keep the AppBar white if you like, but buttons must be dark:
-        backgroundColor: Colors.white,
-        elevation: 1,
-        iconTheme: IconThemeData(color: Theme.of(context).colorScheme.primary),
         actions: [
           if (!_editing)
             IconButton(
               icon: const Icon(Icons.edit),
+              tooltip: 'Edit Payment Status',
               onPressed: () => setState(() => _editing = true),
             ),
           if (_editing) ...[
             TextButton(
               onPressed: () => setState(() => _editing = false),
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.primary, // dark text
-              ),
               child: const Text('Cancel'),
             ),
+            const SizedBox(width: AppSpacing.xs),
             TextButton(
               onPressed: _saveChanges,
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.primary, // dark text
-              ),
               child: const Text('Save'),
             ),
           ],
@@ -104,29 +97,74 @@ class _BillingHistoryPageState extends State<BillingHistoryPage> {
           ),
         ],
       ),
-      body: ListView(
-        children: years.map((year) {
-          final appts = _byYear[year]!;
-          return ExpansionTile(
-            key: PageStorageKey(year),
-            title: Text('$year'),
-            initiallyExpanded: year == _currentYear,
-            children: appts.map((a) {
-              final paid = _paidMap[a.id] ?? false;
-              final dateStr = DateFormat.yMMMd().format(a.dateTime);
-              final timeStr = TimeOfDay.fromDateTime(a.dateTime).format(context);
-              return ListTile(
-                title: Text('$dateStr @ $timeStr'),
-                trailing: Checkbox(
-                  value: paid,
-                  onChanged: _editing
-                      ? (v) => setState(() => _paidMap[a.id!] = v!)
-                      : null,
+      body: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Card(
+          child: ListView(
+            children: years.map((year) {
+              final appts = _byYear[year]!;
+              final paidCount = appts.where((a) => _paidMap[a.id] ?? false).length;
+              return ExpansionTile(
+                key: PageStorageKey(year),
+                title: Text(
+                  '$year',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
                 ),
+                subtitle: Text(
+                  '${appts.length} appointments • $paidCount paid',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                initiallyExpanded: year == _currentYear,
+                children: appts.map((a) {
+                  final paid = _paidMap[a.id] ?? false;
+                  final dateStr = DateFormat.yMMMd().format(a.dateTime);
+                  final timeStr = TimeOfDay.fromDateTime(a.dateTime).format(context);
+                  return ListTile(
+                    title: Text('$dateStr @ $timeStr'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: AppSpacing.sm,
+                            vertical: AppSpacing.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: paid
+                                ? AppColors.successGreen.withOpacity(0.1)
+                                : AppColors.warningAmber.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                          ),
+                          child: Text(
+                            paid ? 'Paid' : 'Unpaid',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: paid ? AppColors.successGreen : AppColors.warningAmber,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Checkbox(
+                          value: paid,
+                          onChanged: _editing
+                              ? (v) => setState(() => _paidMap[a.id!] = v!)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
               );
             }).toList(),
-          );
-        }).toList(),
+          ),
+        ),
       ),
     );
   }

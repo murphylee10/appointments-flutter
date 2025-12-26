@@ -1,3 +1,4 @@
+import 'package:appt_flutter/models/series.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/patient.dart';
@@ -33,7 +34,8 @@ class DatabaseHelper {
           'gender TEXT, '
           'dob TEXT, '
           'email TEXT, '
-          'phone TEXT'
+          'phone TEXT, '
+          'address TEXT'
           ')',
         );
         await db.execute(
@@ -43,6 +45,7 @@ class DatabaseHelper {
           'datetime TEXT, '
           'notes TEXT, '
           'paid INTEGER DEFAULT 0, '
+          'series_id INTEGER, '
           'FOREIGN KEY(patient_id) REFERENCES patients(id)'
           ')',
         );
@@ -64,8 +67,38 @@ class DatabaseHelper {
             FOREIGN KEY(appointment_id) REFERENCES appointments(id)
           )
         ''');
+        await db.execute('''
+          CREATE TABLE series(
+            id INTEGER PRIMARY KEY,
+            patient_id INTEGER,
+            start_datetime TEXT,
+            frequency TEXT,
+            end_date TEXT,
+            FOREIGN KEY(patient_id) REFERENCES patients(id)
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE groups(
+            id INTEGER PRIMARY KEY,
+            name TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE group_members(
+            group_id INTEGER,
+            patient_id INTEGER,
+            PRIMARY KEY(group_id, patient_id),
+            FOREIGN KEY(group_id) REFERENCES groups(id),
+            FOREIGN KEY(patient_id) REFERENCES patients(id)
+          )
+        ''');
       },
-      version: 1,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE patients ADD COLUMN address TEXT');
+        }
+      },
+      version: 2,
     );
   }
 
@@ -90,13 +123,14 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) {
       return Patient(
         id: maps[i]['id'],
-        firstName: maps[i]['first_name'],
+        firstName: maps[i]['first_name'] ?? '',
         middleName: maps[i]['middle_name'],
-        lastName: maps[i]['last_name'],
+        lastName: maps[i]['last_name'] ?? '',
         gender: maps[i]['gender'],
         dob: maps[i]['dob'],
         email: maps[i]['email'],
         phone: maps[i]['phone'],
+        address: maps[i]['address'],
       );
     });
   }
@@ -134,6 +168,51 @@ class DatabaseHelper {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('appointments');
     return maps.map((row) => Appointment.fromMap(row)).toList();
+  }
+
+  Future<List<Appointment>> getAppointmentsByPatientId(int patientId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'appointments',
+      where: 'patient_id = ?',
+      whereArgs: [patientId],
+      orderBy: 'datetime DESC',
+    );
+    return maps.map((row) => Appointment.fromMap(row)).toList();
+  }
+
+  Future<List<Series>> getSeriesByPatientId(int patientId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'series',
+      where: 'patient_id = ?',
+      whereArgs: [patientId],
+      orderBy: 'start_datetime DESC',
+    );
+    return maps.map((row) => Series.fromMap(row)).toList();
+  }
+
+  Future<List<Receipt>> getReceiptsByPatientId(int patientId) async {
+    final db = await database;
+    final recRows = await db.query(
+      'receipts',
+      where: 'patient_id = ?',
+      whereArgs: [patientId],
+      orderBy: 'datetime DESC',
+    );
+    final List<Receipt> list = [];
+    for (var row in recRows) {
+      final rid = row['id'] as int;
+      final items = await db.query(
+        'receipt_items',
+        columns: ['appointment_id'],
+        where: 'receipt_id = ?',
+        whereArgs: [rid],
+      );
+      final aids = items.map((r) => r['appointment_id'] as int).toList();
+      list.add(Receipt.fromMap(row, aids));
+    }
+    return list;
   }
 
   Future<void> updateAppointment(Appointment appointment) async {
@@ -199,4 +278,38 @@ class DatabaseHelper {
     }
     return list;
   }
+  ///  Recurring: create a series + its appointments
+  Future<void> createSeriesAndAppointments({ required Series series }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final sid = await txn.insert('series', series.toMap());
+      DateTime dt = series.startDateTime;
+      final limit = series.endDate ?? dt.add(const Duration(days:365*5));
+      final delta = series.frequency == 'BIWEEKLY'
+        ? const Duration(days:14)
+        : const Duration(days:7);
+      while (!dt.isAfter(limit)) {
+        await txn.insert('appointments', {
+          'patient_id': series.patientId,
+          'datetime': dt.toIso8601String(),
+          'notes': '',
+          'paid': 0,
+          'series_id': sid,
+        });
+        dt = dt.add(delta);
+      }
+    });
+  }
+
+  ///  Cancel a series from a given date onward
+  Future<void> cancelSeriesFrom(int seriesId, DateTime from) async {
+    final db = await database;
+    await db.delete(
+      'appointments',
+      where: 'series_id = ? AND datetime >= ?',
+      whereArgs: [seriesId, from.toIso8601String()],
+    );
+  }
+
 }
+
