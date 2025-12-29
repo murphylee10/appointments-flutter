@@ -23,6 +23,18 @@ class _PatientsScreenState extends State<PatientsScreen> {
   List<Patient> _all = [];
   List<Patient> _filtered = [];
 
+  // Pagination
+  int _currentPage = 0;
+  static const int _pageSize = 25;
+
+  int get _totalPages => (_filtered.length / _pageSize).ceil();
+
+  List<Patient> get _paginatedPatients {
+    final start = _currentPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _filtered.length);
+    return _filtered.sublist(start, end);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -51,9 +63,10 @@ class _PatientsScreenState extends State<PatientsScreen> {
         : _all.where((p) =>
             p.firstName.toLowerCase().contains(q) ||
             p.lastName.toLowerCase().contains(q) ||
-            (p.email?.toLowerCase().contains(q) ?? false) ||
             (p.phone?.toLowerCase().contains(q) ?? false)
           ).toList();
+      _filtered.sort((a, b) => a.lastName.toLowerCase().compareTo(b.lastName.toLowerCase()));
+      _currentPage = 0; // Reset to first page on filter change
     });
   }
 
@@ -287,7 +300,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                           controller: _searchController,
                           decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.search),
-                            hintText: 'Search name/email/phone…',
+                            hintText: 'Search by name or phone…',
                           ),
                         ),
                       ),
@@ -329,16 +342,14 @@ class _PatientsScreenState extends State<PatientsScreen> {
                           child: DataTable(
                             showCheckboxColumn: false,
                             columns: const [
-                              DataColumn(label: Text('First')),
-                              DataColumn(label: Text('Middle')),
                               DataColumn(label: Text('Last')),
+                              DataColumn(label: Text('First')),
                               DataColumn(label: Text('Gender')),
                               DataColumn(label: Text('DOB')),
-                              DataColumn(label: Text('Email')),
                               DataColumn(label: Text('Phone')),
                               DataColumn(label: Text('Actions')),
                             ],
-                            rows: _filtered.map((patient) {
+                            rows: _paginatedPatients.map((patient) {
                               return DataRow(
                                 onSelectChanged: (_) async {
                                   await Navigator.of(context).push(
@@ -349,12 +360,10 @@ class _PatientsScreenState extends State<PatientsScreen> {
                                   _load(); // Reload list to reflect any changes
                                 },
                                 cells: [
-                                DataCell(Text(patient.firstName)),
-                                DataCell(Text(patient.middleName ?? '')),
                                 DataCell(Text(patient.lastName)),
+                                DataCell(Text(patient.firstName)),
                                 DataCell(Text(patient.gender ?? '')),
                                 DataCell(Text(patient.dob ?? '')),
-                                DataCell(Text(patient.email ?? '')),
                                 DataCell(Text(patient.phone ?? '')),
                                 DataCell(Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -398,6 +407,53 @@ class _PatientsScreenState extends State<PatientsScreen> {
                 ),
               ),
             ),
+
+            // Pagination controls
+            if (_filtered.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.md),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Showing ${_currentPage * _pageSize + 1}–${((_currentPage + 1) * _pageSize).clamp(1, _filtered.length)} of ${_filtered.length}',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.lg),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: _currentPage > 0
+                          ? () => setState(() => _currentPage--)
+                          : null,
+                      tooltip: 'Previous page',
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.xs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                      child: Text(
+                        'Page ${_currentPage + 1} of ${_totalPages == 0 ? 1 : _totalPages}',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: _currentPage < _totalPages - 1
+                          ? () => setState(() => _currentPage++)
+                          : null,
+                      tooltip: 'Next page',
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

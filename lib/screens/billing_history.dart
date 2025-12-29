@@ -58,6 +58,161 @@ class _BillingHistoryPageState extends State<BillingHistoryPage> {
     await _loadHistory();
   }
 
+  /// Get unpaid appointments based on current _paidMap state
+  List<Appointment> get _unpaidAppointments {
+    return _history.where((a) => !(_paidMap[a.id] ?? false)).toList();
+  }
+
+  /// Generate receipt with selection dialog
+  Future<void> _generateReceipt() async {
+    final unpaid = _unpaidAppointments;
+    if (unpaid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No unpaid appointments to include in receipt')),
+      );
+      return;
+    }
+
+    final selectedAppointments = await _showReceiptSelectionDialog(unpaid);
+    if (selectedAppointments == null || selectedAppointments.isEmpty) {
+      return;
+    }
+
+    await ReceiptHelper.generateHtmlReceipt(
+      context: context,
+      patient: widget.patient,
+      appointments: selectedAppointments,
+    );
+  }
+
+  /// Show dialog to select which appointments to include in receipt
+  Future<List<Appointment>?> _showReceiptSelectionDialog(List<Appointment> unpaid) async {
+    // Load unit price from settings
+    final settings = await DatabaseHelper().getAllSettings();
+    final unitPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+
+    final sorted = List<Appointment>.from(unpaid)
+      ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+    final selected = Map<int, bool>.fromEntries(
+      sorted.map((a) => MapEntry(a.id!, true)),
+    );
+
+    return showDialog<List<Appointment>>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final selectedCount = selected.values.where((v) => v).length;
+          final total = selectedCount * unitPrice;
+
+          return AlertDialog(
+            title: const Text('Select Visits for Receipt'),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          setDialogState(() {
+                            for (final id in selected.keys) {
+                              selected[id] = true;
+                            }
+                          });
+                        },
+                        child: const Text('Select All'),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      TextButton(
+                        onPressed: () {
+                          setDialogState(() {
+                            for (final id in selected.keys) {
+                              selected[id] = false;
+                            }
+                          });
+                        },
+                        child: const Text('Deselect All'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  const Divider(height: 1),
+                  const SizedBox(height: AppSpacing.sm),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 300),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: sorted.map((appointment) {
+                          final dateStr = DateFormat.yMMMd().format(appointment.dateTime);
+                          final timeStr = DateFormat.jm().format(appointment.dateTime);
+                          return CheckboxListTile(
+                            value: selected[appointment.id] ?? false,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selected[appointment.id!] = value ?? false;
+                              });
+                            },
+                            title: Text(
+                              '$dateStr  $timeStr',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            dense: true,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  const Divider(height: 1),
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Text(
+                      'Total: \$${total.toStringAsFixed(2)} ($selectedCount visit${selectedCount == 1 ? '' : 's'})',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              ElevatedButton(
+                onPressed: selectedCount > 0
+                    ? () {
+                        final result = sorted
+                            .where((a) => selected[a.id] == true)
+                            .toList();
+                        Navigator.pop(context, result);
+                      }
+                    : null,
+                child: const Text('Generate Receipt'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Sort years descending
@@ -87,13 +242,7 @@ class _BillingHistoryPageState extends State<BillingHistoryPage> {
           IconButton(
             icon: const Icon(Icons.print),
             tooltip: 'Print Receipt',
-            onPressed: () {
-              ReceiptHelper.generateHtmlReceipt(
-                context: context,
-                patient: widget.patient,
-                appointments: _history.where((a) => !(_paidMap[a.id] ?? false)).toList(),
-              );
-            },
+            onPressed: _generateReceipt,
           ),
         ],
       ),

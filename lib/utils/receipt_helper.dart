@@ -15,18 +15,23 @@ class ReceiptHelper {
     required BuildContext context,
     required Patient patient,
     required List<Appointment> appointments,
-    double unitPrice = 40.0,
-    String clinicName = 'Markham Chiropractic',
-    String addressLine1 = '123 Main St.',
-    String addressLine2 = 'Markham, ON L3R 1X5',
   }) async {
-    // 1) Let the user pick a folder
+    // 1) Load settings from database
+    final db = DatabaseHelper();
+    final settings = await db.getAllSettings();
+    final unitPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+    final clinicName = settings[SettingsKeys.clinicName] ?? 'Clinic';
+    final addressLine1 = settings[SettingsKeys.addressLine1] ?? '';
+    final addressLine2 = settings[SettingsKeys.addressLine2] ?? '';
+    final serviceDescription = settings[SettingsKeys.serviceDescription] ?? 'Service';
+
+    // 2) Let the user pick a folder
     final selectedDir = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Select a folder to save the receipt',
     );
     if (selectedDir == null) return; // user cancelled
 
-    // 2) Build HTML
+    // 3) Build HTML
     final dateFormatter = DateFormat.yMMMd();
     final timeFormatter = DateFormat.jm();
     final total = appointments.length * unitPrice;
@@ -39,7 +44,7 @@ class ReceiptHelper {
         <td>$d</td>
         <td>$t</td>
         <td>\$${unitPrice.toStringAsFixed(2)}</td>
-        <td>Chiropractic adjustment</td>
+        <td>$serviceDescription</td>
       </tr>
       ''';
     }).join();
@@ -89,13 +94,13 @@ class ReceiptHelper {
 </html>
 ''';
 
-    // 3) Write file
+    // 4) Write file
     final fileName =
         'receipt_${patient.id}_${DateTime.now().millisecondsSinceEpoch}.html';
     final file = File('$selectedDir/$fileName');
     await file.writeAsString(html);
 
-    // 4) Record in database
+    // 5) Record in database
     final receipt = Receipt(
       id: 0, // dummy, will be replaced by insertReceipt
       patientId: patient.id!,
@@ -103,9 +108,9 @@ class ReceiptHelper {
       filePath: file.path,
       appointmentIds: appointments.map((a) => a.id!).toList(),
     );
-    await DatabaseHelper().insertReceipt(receipt);
+    await db.insertReceipt(receipt);
 
-    // 5) Feedback to user
+    // 6) Feedback to user
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Receipt saved & recorded at ${file.path}')),
     );

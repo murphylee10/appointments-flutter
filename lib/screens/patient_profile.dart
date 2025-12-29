@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/patient.dart';
@@ -24,6 +25,11 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
   List<Series> _series = [];
   List<Receipt> _receipts = [];
   bool _loading = true;
+
+  // Pagination
+  static const int _pageSize = 5;
+  int _receiptsPage = 0;
+  int _appointmentsPage = 0;
 
   @override
   void initState() {
@@ -56,6 +62,26 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     return _appointments.where((a) => !a.paid).toList();
   }
 
+  // Pagination helpers for receipts
+  List<Receipt> get _paginatedReceipts {
+    final start = _receiptsPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _receipts.length);
+    if (start >= _receipts.length) return [];
+    return _receipts.sublist(start, end);
+  }
+
+  int get _totalReceiptPages => (_receipts.length / _pageSize).ceil().clamp(1, 999);
+
+  // Pagination helpers for appointments
+  List<Appointment> get _paginatedAppointments {
+    final start = _appointmentsPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _appointments.length);
+    if (start >= _appointments.length) return [];
+    return _appointments.sublist(start, end);
+  }
+
+  int get _totalAppointmentPages => (_appointments.length / _pageSize).ceil().clamp(1, 999);
+
   /// Get first visit date formatted
   String _getFirstVisitDate() {
     if (_appointments.isEmpty) return 'N/A';
@@ -72,10 +98,22 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     return DateFormat.yMMMd().format(sorted.last.dateTime);
   }
 
+  /// Compute end time from start time + duration
+  TimeOfDay _computeEndTime(TimeOfDay start, int durationMinutes) {
+    final startMinutes = start.hour * 60 + start.minute;
+    final endMinutes = startMinutes + durationMinutes;
+    return TimeOfDay(hour: endMinutes ~/ 60, minute: endMinutes % 60);
+  }
+
   /// Schedule a new appointment for this patient
   Future<void> _scheduleAppointment() async {
+    // Load default duration from settings
+    final settings = await DatabaseHelper().getAllSettings();
+    final defaultDuration = int.tryParse(settings[SettingsKeys.defaultAppointmentDuration] ?? '40') ?? 40;
+
     DateTime selectedDate = DateTime.now();
-    TimeOfDay selectedTime = const TimeOfDay(hour: 9, minute: 0);
+    TimeOfDay startTime = const TimeOfDay(hour: 13, minute: 0);
+    TimeOfDay endTime = _computeEndTime(startTime, defaultDuration);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -111,21 +149,60 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                     }
                   },
                 ),
-                // Time picker
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.access_time),
-                  title: const Text('Time'),
-                  subtitle: Text(selectedTime.format(context)),
-                  onTap: () async {
-                    final time = await showTimePicker(
-                      context: context,
-                      initialTime: selectedTime,
-                    );
-                    if (time != null) {
-                      setDialogState(() => selectedTime = time);
-                    }
-                  },
+                const SizedBox(height: AppSpacing.sm),
+                // Time pickers row
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime: startTime,
+                          );
+                          if (picked != null) {
+                            setDialogState(() {
+                              startTime = picked;
+                              endTime = _computeEndTime(picked, defaultDuration);
+                            });
+                          }
+                        },
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Start Time',
+                            suffixIcon: Icon(Icons.access_time, size: 20),
+                          ),
+                          child: Text(startTime.format(context)),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                      child: Icon(Icons.arrow_forward, color: AppColors.textSecondary, size: 20),
+                    ),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime: endTime,
+                          );
+                          if (picked != null) {
+                            setDialogState(() {
+                              endTime = picked;
+                            });
+                          }
+                        },
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'End Time',
+                            suffixIcon: Icon(Icons.access_time, size: 20),
+                          ),
+                          child: Text(endTime.format(context)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -146,17 +223,25 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     );
 
     if (confirmed == true) {
-      final dateTime = DateTime(
+      final startDt = DateTime(
         selectedDate.year,
         selectedDate.month,
         selectedDate.day,
-        selectedTime.hour,
-        selectedTime.minute,
+        startTime.hour,
+        startTime.minute,
+      );
+      final endDt = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        endTime.hour,
+        endTime.minute,
       );
       await DatabaseHelper().insertAppointment(
         Appointment(
           patientId: _patient.id!,
-          dateTime: dateTime,
+          dateTime: startDt,
+          endDateTime: endDt,
           notes: '',
         ),
       );
@@ -165,7 +250,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Appointment scheduled for ${DateFormat.yMMMd().format(dateTime)} @ ${selectedTime.format(context)}',
+              'Appointment scheduled for ${DateFormat.yMMMd().format(startDt)} @ ${startTime.format(context)}',
             ),
           ),
         );
@@ -183,12 +268,340 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
       return;
     }
 
+    // Show selection dialog
+    final selectedAppointments = await _showReceiptSelectionDialog(unpaid);
+    if (selectedAppointments == null || selectedAppointments.isEmpty) {
+      return; // User cancelled or selected nothing
+    }
+
     await ReceiptHelper.generateHtmlReceipt(
       context: context,
       patient: _patient,
-      appointments: unpaid,
+      appointments: selectedAppointments,
     );
     await _loadData(); // Reload to show new receipt
+  }
+
+  /// Show dialog to select which appointments to include in receipt
+  Future<List<Appointment>?> _showReceiptSelectionDialog(List<Appointment> unpaid) async {
+    // Load unit price from settings
+    final settings = await DatabaseHelper().getAllSettings();
+    final unitPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+
+    // Sort by date descending (most recent first)
+    final sorted = List<Appointment>.from(unpaid)
+      ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+    // Track selection state - all selected by default
+    final selected = Map<int, bool>.fromEntries(
+      sorted.map((a) => MapEntry(a.id!, true)),
+    );
+
+    return showDialog<List<Appointment>>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final selectedCount = selected.values.where((v) => v).length;
+          final total = selectedCount * unitPrice;
+
+          return AlertDialog(
+            title: const Text('Select Visits for Receipt'),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Select/Deselect All buttons
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          setDialogState(() {
+                            for (final id in selected.keys) {
+                              selected[id] = true;
+                            }
+                          });
+                        },
+                        child: const Text('Select All'),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      TextButton(
+                        onPressed: () {
+                          setDialogState(() {
+                            for (final id in selected.keys) {
+                              selected[id] = false;
+                            }
+                          });
+                        },
+                        child: const Text('Deselect All'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  const Divider(height: 1),
+                  const SizedBox(height: AppSpacing.sm),
+                  // Scrollable list of checkboxes
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 300),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: sorted.map((appointment) {
+                          final dateStr = DateFormat.yMMMd().format(appointment.dateTime);
+                          final timeStr = DateFormat.jm().format(appointment.dateTime);
+                          return CheckboxListTile(
+                            value: selected[appointment.id] ?? false,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selected[appointment.id!] = value ?? false;
+                              });
+                            },
+                            title: Text(
+                              '$dateStr  $timeStr',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            dense: true,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  const Divider(height: 1),
+                  const SizedBox(height: AppSpacing.md),
+                  // Running total
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Text(
+                      'Total: \$${total.toStringAsFixed(2)} ($selectedCount visit${selectedCount == 1 ? '' : 's'})',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              ElevatedButton(
+                onPressed: selectedCount > 0
+                    ? () {
+                        final result = sorted
+                            .where((a) => selected[a.id] == true)
+                            .toList();
+                        Navigator.pop(context, result);
+                      }
+                    : null,
+                child: const Text('Generate Receipt'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Show receipt detail dialog with appointments, total, reprint/delete
+  Future<void> _showReceiptDetailDialog(Receipt receipt) async {
+    // Load unit price from settings
+    final settings = await DatabaseHelper().getAllSettings();
+    final unitPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+
+    // Load appointment details for the receipt
+    final receiptAppointments = _appointments
+        .where((a) => receipt.appointmentIds.contains(a.id))
+        .toList();
+    receiptAppointments.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+    final total = receiptAppointments.length * unitPrice;
+
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Receipt - ${DateFormat.yMMMd().format(receipt.dateTime)}'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header row
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppSpacing.sm,
+                  horizontal: AppSpacing.md,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Text('Date', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                    ),
+                    Expanded(
+                      child: Text('Time', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                    ),
+                    SizedBox(
+                      width: 70,
+                      child: Text('Amount', textAlign: TextAlign.right, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              // Appointment rows
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: receiptAppointments.map((a) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.sm,
+                          horizontal: AppSpacing.md,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                DateFormat.yMMMd().format(a.dateTime),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                DateFormat.jm().format(a.dateTime),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 70,
+                              child: Text(
+                                '\$${unitPrice.toStringAsFixed(2)}',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const Divider(height: AppSpacing.lg),
+              // Total row
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      '\$${total.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          // Reprint button
+          TextButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                final file = File(receipt.filePath);
+                if (await file.exists()) {
+                  await Process.run('cmd', ['/c', 'start', '', receipt.filePath]);
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Receipt file not found')),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not open receipt: $e')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.print, size: 18),
+            label: const Text('Reprint'),
+          ),
+          // Delete button
+          TextButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: AppColors.errorRed, size: 24),
+                      const SizedBox(width: AppSpacing.sm),
+                      const Text('Delete Receipt'),
+                    ],
+                  ),
+                  content: Text('Delete this receipt from ${DateFormat.yMMMd().format(receipt.dateTime)}? The appointments will remain marked as paid.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.errorRed),
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true) {
+                await DatabaseHelper().deleteReceipt(receipt.id);
+                await _loadData();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Receipt deleted')),
+                  );
+                }
+              }
+            },
+            icon: Icon(Icons.delete_outline, size: 18, color: AppColors.errorRed),
+            label: Text('Delete', style: TextStyle(color: AppColors.errorRed)),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Calculate age from DOB string
@@ -695,7 +1108,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
               ),
             ],
 
-            // Recent Receipts Card
+            // Receipts Card (paginated)
             if (!_loading && _receipts.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.lg),
               Card(
@@ -704,22 +1117,56 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Recent Receipts',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      // Header with title and pagination
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Receipts (${_receipts.length})',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (_totalReceiptPages > 1)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.chevron_left, size: 20),
+                                  onPressed: _receiptsPage > 0
+                                      ? () => setState(() => _receiptsPage--)
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                ),
+                                Text(
+                                  '${_receiptsPage + 1} / $_totalReceiptPages',
+                                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.chevron_right, size: 20),
+                                  onPressed: _receiptsPage < _totalReceiptPages - 1
+                                      ? () => setState(() => _receiptsPage++)
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
                       const SizedBox(height: AppSpacing.sm),
-                      ..._receipts.take(3).map((receipt) => _buildReceiptItem(receipt)),
+                      ..._paginatedReceipts.map((receipt) => _buildReceiptItem(receipt)),
                     ],
                   ),
                 ),
               ),
             ],
 
-            // Recent Appointments Card
+            // Appointments Card (paginated)
             if (!_loading && _appointments.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.lg),
               Card(
@@ -728,15 +1175,49 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Recent Appointments',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      // Header with title and pagination
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Appointments (${_appointments.length})',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (_totalAppointmentPages > 1)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.chevron_left, size: 20),
+                                  onPressed: _appointmentsPage > 0
+                                      ? () => setState(() => _appointmentsPage--)
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                ),
+                                Text(
+                                  '${_appointmentsPage + 1} / $_totalAppointmentPages',
+                                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.chevron_right, size: 20),
+                                  onPressed: _appointmentsPage < _totalAppointmentPages - 1
+                                      ? () => setState(() => _appointmentsPage++)
+                                      : null,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
                       const SizedBox(height: AppSpacing.sm),
-                      ..._buildRecentAppointmentsList(),
+                      ..._buildPaginatedAppointmentsList(),
                     ],
                   ),
                 ),
@@ -811,11 +1292,8 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     );
   }
 
-  List<Widget> _buildRecentAppointmentsList() {
-    // Show up to 5 most recent (already sorted DESC from query)
-    final recent = _appointments.take(5).toList();
-
-    return recent.map((appointment) {
+  List<Widget> _buildPaginatedAppointmentsList() {
+    return _paginatedAppointments.map((appointment) {
       final dateStr = DateFormat.yMMMd().format(appointment.dateTime);
       final timeStr = TimeOfDay.fromDateTime(appointment.dateTime).format(context);
 
@@ -996,38 +1474,47 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     final dateStr = DateFormat.yMMMd().format(receipt.dateTime);
     final appointmentCount = receipt.appointmentIds.length;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      child: Row(
-        children: [
-          Icon(
-            Icons.receipt_long,
-            size: 20,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Receipt #${receipt.id}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  '$dateStr • $appointmentCount appointment${appointmentCount == 1 ? '' : 's'}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
+    return InkWell(
+      onTap: () => _showReceiptDetailDialog(receipt),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm, horizontal: AppSpacing.xs),
+        child: Row(
+          children: [
+            Icon(
+              Icons.receipt_long,
+              size: 20,
+              color: AppColors.textSecondary,
             ),
-          ),
-        ],
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    dateStr,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    '$appointmentCount appointment${appointmentCount == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: AppColors.textSecondary,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -5,6 +5,26 @@ import '../models/patient.dart';
 import '../models/appointment.dart';
 import '../models/receipt.dart';
 
+/// Settings keys for app configuration
+class SettingsKeys {
+  static const clinicName = 'clinic_name';
+  static const addressLine1 = 'address_line1';
+  static const addressLine2 = 'address_line2';
+  static const unitPrice = 'unit_price';
+  static const serviceDescription = 'service_description';
+  static const defaultAppointmentDuration = 'default_appointment_duration';
+}
+
+/// Default settings values (used on first launch)
+const defaultSettings = {
+  SettingsKeys.clinicName: 'Markham Chiropractic',
+  SettingsKeys.addressLine1: '123 Main St.',
+  SettingsKeys.addressLine2: 'Markham, ON L3R 1X5',
+  SettingsKeys.unitPrice: '40.0',
+  SettingsKeys.serviceDescription: 'Chiropractic adjustment',
+  SettingsKeys.defaultAppointmentDuration: '40',
+};
+
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
 
@@ -43,6 +63,7 @@ class DatabaseHelper {
           'id INTEGER PRIMARY KEY, '
           'patient_id INTEGER, '
           'datetime TEXT, '
+          'end_datetime TEXT, '
           'notes TEXT, '
           'paid INTEGER DEFAULT 0, '
           'series_id INTEGER, '
@@ -92,13 +113,45 @@ class DatabaseHelper {
             FOREIGN KEY(patient_id) REFERENCES patients(id)
           )
         ''');
+        await db.execute('''
+          CREATE TABLE settings(
+            key TEXT PRIMARY KEY,
+            value TEXT
+          )
+        ''');
+        // Populate default settings
+        for (final entry in defaultSettings.entries) {
+          await db.insert('settings', {'key': entry.key, 'value': entry.value});
+        }
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute('ALTER TABLE patients ADD COLUMN address TEXT');
         }
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE settings(
+              key TEXT PRIMARY KEY,
+              value TEXT
+            )
+          ''');
+          // Populate default settings for existing databases
+          for (final entry in defaultSettings.entries) {
+            await db.insert('settings', {'key': entry.key, 'value': entry.value});
+          }
+        }
+        if (oldVersion < 4) {
+          // Add end_datetime column to appointments table
+          await db.execute('ALTER TABLE appointments ADD COLUMN end_datetime TEXT');
+          // Add default appointment duration setting
+          await db.insert(
+            'settings',
+            {'key': SettingsKeys.defaultAppointmentDuration, 'value': '40'},
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
       },
-      version: 2,
+      version: 4,
     );
   }
 
@@ -278,9 +331,20 @@ class DatabaseHelper {
     }
     return list;
   }
+
+  /// Delete a receipt (receipt_items cascade delete automatically)
+  Future<void> deleteReceipt(int receiptId) async {
+    final db = await database;
+    await db.delete('receipts', where: 'id = ?', whereArgs: [receiptId]);
+  }
+
   ///  Recurring: create a series + its appointments
   Future<void> createSeriesAndAppointments({ required Series series }) async {
     final db = await database;
+    // Get default duration from settings
+    final durationStr = await getSetting(SettingsKeys.defaultAppointmentDuration);
+    final durationMinutes = int.tryParse(durationStr ?? '40') ?? 40;
+
     await db.transaction((txn) async {
       final sid = await txn.insert('series', series.toMap());
       DateTime dt = series.startDateTime;
@@ -289,9 +353,11 @@ class DatabaseHelper {
         ? const Duration(days:14)
         : const Duration(days:7);
       while (!dt.isAfter(limit)) {
+        final endDt = dt.add(Duration(minutes: durationMinutes));
         await txn.insert('appointments', {
           'patient_id': series.patientId,
           'datetime': dt.toIso8601String(),
+          'end_datetime': endDt.toIso8601String(),
           'notes': '',
           'paid': 0,
           'series_id': sid,
@@ -311,5 +377,157 @@ class DatabaseHelper {
     );
   }
 
+  /* SETTINGS */
+
+  /// Get a single setting value by key
+  Future<String?> getSetting(String key) async {
+    final db = await database;
+    final result = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    if (result.isEmpty) return null;
+    return result.first['value'] as String?;
+  }
+
+  /// Set a single setting value
+  Future<void> setSetting(String key, String value) async {
+    final db = await database;
+    await db.insert(
+      'settings',
+      {'key': key, 'value': value},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Get all settings as a map
+  Future<Map<String, String>> getAllSettings() async {
+    final db = await database;
+    final result = await db.query('settings');
+    return {
+      for (final row in result)
+        row['key'] as String: row['value'] as String? ?? ''
+    };
+  }
+
+  /// Save multiple settings at once
+  Future<void> saveAllSettings(Map<String, String> settings) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final entry in settings.entries) {
+        await txn.insert(
+          'settings',
+          {'key': entry.key, 'value': entry.value},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  /* METRICS QUERIES */
+
+  /// Get all appointments within a date range
+  Future<List<Appointment>> getAppointmentsInRange(DateTime start, DateTime end) async {
+    final db = await database;
+    final maps = await db.query(
+      'appointments',
+      where: 'datetime >= ? AND datetime < ?',
+      whereArgs: [start.toIso8601String(), end.toIso8601String()],
+      orderBy: 'datetime DESC',
+    );
+    return maps.map((row) => Appointment.fromMap(row)).toList();
+  }
+
+  /// Get count of distinct patients with appointments in range
+  Future<int> getActivePatientsInRange(DateTime start, DateTime end) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(DISTINCT patient_id) as count FROM appointments WHERE datetime >= ? AND datetime < ?',
+      [start.toIso8601String(), end.toIso8601String()],
+    );
+    return result.first['count'] as int? ?? 0;
+  }
+
+  /// Get count of patients whose first appointment is within range (new patients)
+  Future<int> getNewPatientsInRange(DateTime start, DateTime end) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      '''
+      SELECT COUNT(*) as count FROM (
+        SELECT patient_id, MIN(datetime) as first_appt
+        FROM appointments
+        GROUP BY patient_id
+        HAVING first_appt >= ? AND first_appt < ?
+      )
+      ''',
+      [start.toIso8601String(), end.toIso8601String()],
+    );
+    return result.first['count'] as int? ?? 0;
+  }
+
+  /// Get total patient count
+  Future<int> getTotalPatientCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM patients');
+    return result.first['count'] as int? ?? 0;
+  }
+
+  /// Get count of active series (no end date or end date in future)
+  Future<int> getActiveSeriesCount() async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM series WHERE end_date IS NULL OR end_date > ?',
+      [now],
+    );
+    return result.first['count'] as int? ?? 0;
+  }
+
+  /// Get patients whose birthday is today (matching month and day)
+  Future<List<Patient>> getPatientsWithBirthdayToday() async {
+    final db = await database;
+    final now = DateTime.now();
+    final monthDay = '${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    // DOB is stored as 'YYYY-MM-DD', so we check if it ends with the current month-day
+    final result = await db.rawQuery(
+      "SELECT * FROM patients WHERE substr(dob, 6) = ?",
+      [monthDay],
+    );
+    return result.map((row) => Patient(
+      id: row['id'] as int?,
+      firstName: row['first_name'] as String? ?? '',
+      middleName: row['middle_name'] as String?,
+      lastName: row['last_name'] as String? ?? '',
+      gender: row['gender'] as String?,
+      dob: row['dob'] as String?,
+      email: row['email'] as String?,
+      phone: row['phone'] as String?,
+      address: row['address'] as String?,
+    )).toList();
+  }
+
+  /// Get oldest unpaid appointments (past appointments only) with patient info
+  /// Returns up to [limit] appointments, sorted by date ascending (oldest first)
+  Future<List<Map<String, dynamic>>> getOldestUnpaidAppointments({int limit = 100}) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final result = await db.rawQuery('''
+      SELECT
+        a.id as appointment_id,
+        a.datetime,
+        a.notes,
+        p.id as patient_id,
+        p.first_name,
+        p.last_name,
+        p.phone
+      FROM appointments a
+      JOIN patients p ON a.patient_id = p.id
+      WHERE a.paid = 0 AND a.datetime < ?
+      ORDER BY a.datetime ASC
+      LIMIT ?
+    ''', [now, limit]);
+    return result;
+  }
 }
 

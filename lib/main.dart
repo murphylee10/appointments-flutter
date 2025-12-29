@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'screens/patients.dart';
 import 'screens/appointments.dart';
-import 'screens/receipts.dart';
+import 'screens/metrics.dart';
+import 'screens/settings.dart';
 import 'widgets/sidebar.dart';
 import 'theme/app_theme.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -38,7 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   static const List<Widget> _widgetOptions = <Widget>[
     PatientsScreen(),
     AppointmentsScreen(),
-    ReceiptsScreen(),
+    MetricsScreen(),
+    SettingsScreen(),
   ];
 
   void _onItemTapped(int index) {
