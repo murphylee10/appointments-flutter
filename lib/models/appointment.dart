@@ -6,6 +6,8 @@ class Appointment {
   final String notes;
   final bool paid;
   final int? seriesId;
+  final double? price;
+  final String? serviceDescription;
 
   Appointment({
     this.id,
@@ -15,6 +17,8 @@ class Appointment {
     required this.notes,
     this.paid = false,
     this.seriesId,
+    this.price,
+    this.serviceDescription,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +30,8 @@ class Appointment {
       'notes': notes,
       'paid': paid ? 1 : 0,
       'series_id': seriesId,
+      'price': price,
+      'service_description': serviceDescription,
     };
   }
 
@@ -39,11 +45,13 @@ class Appointment {
       notes: m['notes'] as String,
       paid: (m['paid'] as int) == 1,
       seriesId: m['series_id'] as int?,
+      price: m['price'] as double?,
+      serviceDescription: m['service_description'] as String?,
     );
   }
 
   @override
   String toString() {
-    return 'Appointment{id: $id, patientId: $patientId, dateTime: $dateTime, endDateTime: $endDateTime, notes: $notes, paid: $paid, seriesId: $seriesId}';
+    return 'Appointment{id: $id, patientId: $patientId, dateTime: $dateTime, endDateTime: $endDateTime, notes: $notes, paid: $paid, seriesId: $seriesId, price: $price, serviceDescription: $serviceDescription}';
   }
 }

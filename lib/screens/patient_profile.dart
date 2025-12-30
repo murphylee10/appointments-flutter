@@ -284,9 +284,9 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
 
   /// Show dialog to select which appointments to include in receipt
   Future<List<Appointment>?> _showReceiptSelectionDialog(List<Appointment> unpaid) async {
-    // Load unit price from settings
+    // Load default price from settings (fallback for appointments without price)
     final settings = await DatabaseHelper().getAllSettings();
-    final unitPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+    final defaultPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
 
     // Sort by date descending (most recent first)
     final sorted = List<Appointment>.from(unpaid)
@@ -302,7 +302,10 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
       builder: (_) => StatefulBuilder(
         builder: (context, setDialogState) {
           final selectedCount = selected.values.where((v) => v).length;
-          final total = selectedCount * unitPrice;
+          // Calculate total using individual appointment prices
+          final total = sorted
+              .where((a) => selected[a.id] == true)
+              .fold<double>(0, (sum, a) => sum + (a.price ?? defaultPrice));
 
           return AlertDialog(
             title: const Text('Select Visits for Receipt'),
@@ -349,6 +352,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                         children: sorted.map((appointment) {
                           final dateStr = DateFormat.yMMMd().format(appointment.dateTime);
                           final timeStr = DateFormat.jm().format(appointment.dateTime);
+                          final price = appointment.price ?? defaultPrice;
                           return CheckboxListTile(
                             value: selected[appointment.id] ?? false,
                             onChanged: (value) {
@@ -356,9 +360,23 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                                 selected[appointment.id!] = value ?? false;
                               });
                             },
-                            title: Text(
-                              '$dateStr  $timeStr',
-                              style: const TextStyle(fontSize: 14),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$dateStr  $timeStr',
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ),
+                                Text(
+                                  '\$${price.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                             dense: true,
                             controlAffinity: ListTileControlAffinity.leading,
@@ -417,9 +435,9 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
 
   /// Show receipt detail dialog with appointments, total, reprint/delete
   Future<void> _showReceiptDetailDialog(Receipt receipt) async {
-    // Load unit price from settings
+    // Load default price from settings (fallback for appointments without price)
     final settings = await DatabaseHelper().getAllSettings();
-    final unitPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+    final defaultPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
 
     // Load appointment details for the receipt
     final receiptAppointments = _appointments
@@ -427,7 +445,11 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
         .toList();
     receiptAppointments.sort((a, b) => a.dateTime.compareTo(b.dateTime));
 
-    final total = receiptAppointments.length * unitPrice;
+    // Calculate total using individual appointment prices
+    final total = receiptAppointments.fold<double>(
+      0,
+      (sum, a) => sum + (a.price ?? defaultPrice),
+    );
 
     if (!mounted) return;
 
@@ -474,6 +496,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                 child: SingleChildScrollView(
                   child: Column(
                     children: receiptAppointments.map((a) {
+                      final price = a.price ?? defaultPrice;
                       return Padding(
                         padding: const EdgeInsets.symmetric(
                           vertical: AppSpacing.sm,
@@ -497,7 +520,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                             SizedBox(
                               width: 70,
                               child: Text(
-                                '\$${unitPrice.toStringAsFixed(2)}',
+                                '\$${price.toStringAsFixed(2)}',
                                 textAlign: TextAlign.right,
                                 style: const TextStyle(fontSize: 13),
                               ),

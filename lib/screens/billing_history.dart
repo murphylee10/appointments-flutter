@@ -87,9 +87,9 @@ class _BillingHistoryPageState extends State<BillingHistoryPage> {
 
   /// Show dialog to select which appointments to include in receipt
   Future<List<Appointment>?> _showReceiptSelectionDialog(List<Appointment> unpaid) async {
-    // Load unit price from settings
+    // Load default price from settings (fallback for appointments without price)
     final settings = await DatabaseHelper().getAllSettings();
-    final unitPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+    final defaultPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
 
     final sorted = List<Appointment>.from(unpaid)
       ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
@@ -103,7 +103,10 @@ class _BillingHistoryPageState extends State<BillingHistoryPage> {
       builder: (_) => StatefulBuilder(
         builder: (context, setDialogState) {
           final selectedCount = selected.values.where((v) => v).length;
-          final total = selectedCount * unitPrice;
+          // Calculate total using individual appointment prices
+          final total = sorted
+              .where((a) => selected[a.id] == true)
+              .fold<double>(0, (sum, a) => sum + (a.price ?? defaultPrice));
 
           return AlertDialog(
             title: const Text('Select Visits for Receipt'),
@@ -148,6 +151,7 @@ class _BillingHistoryPageState extends State<BillingHistoryPage> {
                         children: sorted.map((appointment) {
                           final dateStr = DateFormat.yMMMd().format(appointment.dateTime);
                           final timeStr = DateFormat.jm().format(appointment.dateTime);
+                          final price = appointment.price ?? defaultPrice;
                           return CheckboxListTile(
                             value: selected[appointment.id] ?? false,
                             onChanged: (value) {
@@ -155,9 +159,23 @@ class _BillingHistoryPageState extends State<BillingHistoryPage> {
                                 selected[appointment.id!] = value ?? false;
                               });
                             },
-                            title: Text(
-                              '$dateStr  $timeStr',
-                              style: const TextStyle(fontSize: 14),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$dateStr  $timeStr',
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ),
+                                Text(
+                                  '\$${price.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                             dense: true,
                             controlAffinity: ListTileControlAffinity.leading,

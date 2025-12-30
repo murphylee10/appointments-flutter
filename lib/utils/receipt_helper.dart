@@ -16,14 +16,14 @@ class ReceiptHelper {
     required Patient patient,
     required List<Appointment> appointments,
   }) async {
-    // 1) Load settings from database
+    // 1) Load settings from database (used as fallback for appointments without price/description)
     final db = DatabaseHelper();
     final settings = await db.getAllSettings();
-    final unitPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+    final defaultPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
     final clinicName = settings[SettingsKeys.clinicName] ?? 'Clinic';
     final addressLine1 = settings[SettingsKeys.addressLine1] ?? '';
     final addressLine2 = settings[SettingsKeys.addressLine2] ?? '';
-    final serviceDescription = settings[SettingsKeys.serviceDescription] ?? 'Service';
+    final defaultServiceDescription = settings[SettingsKeys.serviceDescription] ?? 'Service';
 
     // 2) Let the user pick a folder
     final selectedDir = await FilePicker.platform.getDirectoryPath(
@@ -34,17 +34,24 @@ class ReceiptHelper {
     // 3) Build HTML
     final dateFormatter = DateFormat.yMMMd();
     final timeFormatter = DateFormat.jm();
-    final total = appointments.length * unitPrice;
+
+    // Calculate total using each appointment's individual price
+    final total = appointments.fold<double>(
+      0,
+      (sum, a) => sum + (a.price ?? defaultPrice),
+    );
 
     final rows = appointments.map((a) {
       final d = dateFormatter.format(a.dateTime);
       final t = timeFormatter.format(a.dateTime);
+      final price = a.price ?? defaultPrice;
+      final serviceDesc = a.serviceDescription ?? defaultServiceDescription;
       return '''
       <tr>
         <td>$d</td>
         <td>$t</td>
-        <td>\$${unitPrice.toStringAsFixed(2)}</td>
-        <td>$serviceDescription</td>
+        <td>\$${price.toStringAsFixed(2)}</td>
+        <td>$serviceDesc</td>
       </tr>
       ''';
     }).join();
@@ -95,8 +102,9 @@ class ReceiptHelper {
 ''';
 
     // 4) Write file
-    final fileName =
-        'receipt_${patient.id}_${DateTime.now().millisecondsSinceEpoch}.html';
+    final timestamp = DateFormat('yyyy-MM-dd_HHmmss').format(DateTime.now());
+    final patientName = '${patient.firstName} ${patient.lastName}';
+    final fileName = '$patientName - $timestamp.html';
     final file = File('$selectedDir/$fileName');
     await file.writeAsString(html);
 

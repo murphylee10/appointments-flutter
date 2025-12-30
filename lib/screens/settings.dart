@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/database_helper.dart';
+import '../utils/backup_helper.dart';
 import '../theme/app_theme.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _loading = true;
   bool _saving = false;
+  String _lastBackupDisplay = 'Never';
 
   @override
   void initState() {
@@ -40,6 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final settings = await DatabaseHelper().getAllSettings();
+    final lastBackup = await BackupHelper.getLastBackupDisplayString();
     setState(() {
       _clinicNameController.text = settings[SettingsKeys.clinicName] ?? '';
       _addressLine1Controller.text = settings[SettingsKeys.addressLine1] ?? '';
@@ -47,6 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _unitPriceController.text = settings[SettingsKeys.unitPrice] ?? '';
       _serviceDescriptionController.text = settings[SettingsKeys.serviceDescription] ?? '';
       _defaultDurationController.text = settings[SettingsKeys.defaultAppointmentDuration] ?? '40';
+      _lastBackupDisplay = lastBackup;
       _loading = false;
     });
   }
@@ -234,6 +238,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           }
                           return null;
                         },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: AppSpacing.lg),
+
+              // Data Backup Card
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Data Backup',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        'Your data is automatically backed up when the app closes',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            size: 16,
+                            color: AppColors.textSecondary,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Text(
+                            'Last backup: $_lastBackupDisplay',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final success = await BackupHelper.exportBackup(context);
+                                if (success) {
+                                  final lastBackup = await BackupHelper.getLastBackupDisplayString();
+                                  setState(() => _lastBackupDisplay = lastBackup);
+                                }
+                              },
+                              icon: const Icon(Icons.save_alt, size: 18),
+                              label: const Text('Export Backup'),
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                await BackupHelper.importBackup(context);
+                              },
+                              icon: const Icon(Icons.restore, size: 18),
+                              label: const Text('Restore'),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

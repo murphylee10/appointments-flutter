@@ -1,5 +1,6 @@
-import 'package:appt_flutter/models/series.dart';
-import 'package:path/path.dart';
+import 'package:chirotrack/models/series.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/patient.dart';
 import '../models/appointment.dart';
@@ -13,6 +14,7 @@ class SettingsKeys {
   static const unitPrice = 'unit_price';
   static const serviceDescription = 'service_description';
   static const defaultAppointmentDuration = 'default_appointment_duration';
+  static const lastBackupDate = 'last_backup_date';
 }
 
 /// Default settings values (used on first launch)
@@ -41,9 +43,10 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    final path = join(await getDatabasesPath(), 'chiropractic_app.db');
+    final appDir = await getApplicationSupportDirectory();
+    final dbPath = path.join(appDir.path, 'chiropractic_app.db');
     return openDatabase(
-      path,
+      dbPath,
       onCreate: (db, version) async {
         await db.execute(
           'CREATE TABLE patients('
@@ -67,6 +70,8 @@ class DatabaseHelper {
           'notes TEXT, '
           'paid INTEGER DEFAULT 0, '
           'series_id INTEGER, '
+          'price REAL, '
+          'service_description TEXT, '
           'FOREIGN KEY(patient_id) REFERENCES patients(id)'
           ')',
         );
@@ -150,14 +155,47 @@ class DatabaseHelper {
             conflictAlgorithm: ConflictAlgorithm.ignore,
           );
         }
+        if (oldVersion < 5) {
+          // Add price and service_description columns to appointments table
+          await db.execute('ALTER TABLE appointments ADD COLUMN price REAL');
+          await db.execute('ALTER TABLE appointments ADD COLUMN service_description TEXT');
+
+          // Backfill existing appointments with current default values
+          final settingsResult = await db.query('settings');
+          final settings = {
+            for (final row in settingsResult)
+              row['key'] as String: row['value'] as String? ?? ''
+          };
+          final defaultPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '40.0') ?? 40.0;
+          final defaultServiceDesc = settings[SettingsKeys.serviceDescription] ?? 'Chiropractic adjustment';
+
+          await db.update(
+            'appointments',
+            {'price': defaultPrice, 'service_description': defaultServiceDesc},
+          );
+        }
       },
-      version: 4,
+      version: 5,
     );
   }
 
   Future<void> close() async {
     final db = await database;
     db.close();
+  }
+
+  /// Close and reset database instance (for restore operations)
+  Future<void> closeAndReset() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+  }
+
+  /// Get the database file path
+  Future<String> getDatabasePath() async {
+    final appDir = await getApplicationSupportDirectory();
+    return path.join(appDir.path, 'chiropractic_app.db');
   }
 
   /* PATIENT CRUD */
@@ -341,9 +379,11 @@ class DatabaseHelper {
   ///  Recurring: create a series + its appointments
   Future<void> createSeriesAndAppointments({ required Series series }) async {
     final db = await database;
-    // Get default duration from settings
-    final durationStr = await getSetting(SettingsKeys.defaultAppointmentDuration);
-    final durationMinutes = int.tryParse(durationStr ?? '40') ?? 40;
+    // Get default settings
+    final settings = await getAllSettings();
+    final durationMinutes = int.tryParse(settings[SettingsKeys.defaultAppointmentDuration] ?? '40') ?? 40;
+    final defaultPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '40.0') ?? 40.0;
+    final defaultServiceDesc = settings[SettingsKeys.serviceDescription] ?? 'Chiropractic adjustment';
 
     await db.transaction((txn) async {
       final sid = await txn.insert('series', series.toMap());
@@ -361,6 +401,8 @@ class DatabaseHelper {
           'notes': '',
           'paid': 0,
           'series_id': sid,
+          'price': defaultPrice,
+          'service_description': defaultServiceDesc,
         });
         dt = dt.add(delta);
       }
@@ -505,6 +547,78 @@ class DatabaseHelper {
       phone: row['phone'] as String?,
       address: row['address'] as String?,
     )).toList();
+  }
+
+  /// Get patients whose birthday was in the past week (including today)
+  /// Returns list of (Patient, daysAgo) where daysAgo is 0 for today, 1 for yesterday, etc.
+  Future<List<(Patient, int)>> getPatientsWithBirthdayInPastWeek() async {
+    final db = await database;
+    final now = DateTime.now();
+    final results = <(Patient, int)>[];
+
+    // Check each day from today back 6 days (7 days total including today)
+    for (int daysAgo = 0; daysAgo <= 6; daysAgo++) {
+      final date = now.subtract(Duration(days: daysAgo));
+      final monthDay = '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      final rows = await db.rawQuery(
+        "SELECT * FROM patients WHERE substr(dob, 6) = ?",
+        [monthDay],
+      );
+
+      for (final row in rows) {
+        final patient = Patient(
+          id: row['id'] as int?,
+          firstName: row['first_name'] as String? ?? '',
+          middleName: row['middle_name'] as String?,
+          lastName: row['last_name'] as String? ?? '',
+          gender: row['gender'] as String?,
+          dob: row['dob'] as String?,
+          email: row['email'] as String?,
+          phone: row['phone'] as String?,
+          address: row['address'] as String?,
+        );
+        results.add((patient, daysAgo));
+      }
+    }
+
+    return results;
+  }
+
+  /// Get patients whose birthday is in the next week (not including today)
+  /// Returns list of (Patient, daysUntil) where daysUntil is 1 for tomorrow, 2 for day after, etc.
+  Future<List<(Patient, int)>> getPatientsWithBirthdayInNextWeek() async {
+    final db = await database;
+    final now = DateTime.now();
+    final results = <(Patient, int)>[];
+
+    // Check each day from tomorrow to 7 days from now
+    for (int daysUntil = 1; daysUntil <= 7; daysUntil++) {
+      final date = now.add(Duration(days: daysUntil));
+      final monthDay = '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      final rows = await db.rawQuery(
+        "SELECT * FROM patients WHERE substr(dob, 6) = ?",
+        [monthDay],
+      );
+
+      for (final row in rows) {
+        final patient = Patient(
+          id: row['id'] as int?,
+          firstName: row['first_name'] as String? ?? '',
+          middleName: row['middle_name'] as String?,
+          lastName: row['last_name'] as String? ?? '',
+          gender: row['gender'] as String?,
+          dob: row['dob'] as String?,
+          email: row['email'] as String?,
+          phone: row['phone'] as String?,
+          address: row['address'] as String?,
+        );
+        results.add((patient, daysUntil));
+      }
+    }
+
+    return results;
   }
 
   /// Get oldest unpaid appointments (past appointments only) with patient info

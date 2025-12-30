@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 import 'screens/patients.dart';
 import 'screens/appointments.dart';
 import 'screens/metrics.dart';
 import 'screens/settings.dart';
 import 'widgets/sidebar.dart';
 import 'theme/app_theme.dart';
+import 'utils/backup_helper.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+
+  // Initialize window manager for close intercept
+  await windowManager.ensureInitialized();
+  await windowManager.setPreventClose(true);
+
   runApp(const MyApp());
 }
 
@@ -19,7 +28,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Chiropractic App',
+      title: 'ChiroTrack',
       theme: AppTheme.buildLightTheme(),
       home: const HomeScreen(),
     );
@@ -33,7 +42,7 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WindowListener {
   int _selectedIndex = 0;
 
   static const List<Widget> _widgetOptions = <Widget>[
@@ -42,6 +51,25 @@ class _HomeScreenState extends State<HomeScreen> {
     MetricsScreen(),
     SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowClose() async {
+    // Perform auto-backup before closing
+    await BackupHelper.autoBackup();
+    await windowManager.destroy();
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -53,7 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chiropractic App'),
+        title: const Text('ChiroTrack'),
       ),
       body: Row(
         children: <Widget>[

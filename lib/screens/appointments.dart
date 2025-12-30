@@ -109,19 +109,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     _loadAppointments();
   }
 
-  /// Group appointments by time slot (same start + end time)
-  List<List<Appointment>> get _groupedAppointments {
-    final groups = <String, List<Appointment>>{};
-    for (final a in _appointmentsForDate) {
-      final key = '${a.dateTime.toIso8601String()}_${a.endDateTime?.toIso8601String() ?? ''}';
-      groups.putIfAbsent(key, () => []).add(a);
-    }
-    // Convert to list and sort by start time
-    final result = groups.values.toList();
-    result.sort((a, b) => a.first.dateTime.compareTo(b.first.dateTime));
-    return result;
-  }
-
   /// Compute end time from start time + duration
   TimeOfDay _computeEndTime(TimeOfDay start, int durationMinutes) {
     final startMinutes = start.hour * 60 + start.minute;
@@ -132,8 +119,15 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   Future<void> _showAddAppointmentDialog() async {
     List<Patient> selectedPatients = [];
     final notesController = TextEditingController();
+    final priceController = TextEditingController();
+    final serviceDescController = TextEditingController();
     TimeOfDay startTime = const TimeOfDay(hour: 13, minute: 0);
     TimeOfDay endTime = _computeEndTime(startTime, _defaultDuration);
+
+    // Load default price and service description
+    final settings = await DatabaseHelper().getAllSettings();
+    priceController.text = settings[SettingsKeys.unitPrice] ?? '40.0';
+    serviceDescController.text = settings[SettingsKeys.serviceDescription] ?? 'Chiropractic adjustment';
 
     await showDialog<void>(
       context: context,
@@ -252,6 +246,34 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                   ),
                   maxLines: 2,
                 ),
+                const SizedBox(height: AppSpacing.md),
+
+                // Price and service description row
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: TextFormField(
+                        controller: priceController,
+                        decoration: const InputDecoration(
+                          labelText: 'Price',
+                          prefixText: '\$ ',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: serviceDescController,
+                        decoration: const InputDecoration(
+                          labelText: 'Service Description',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -279,6 +301,9 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                         endTime.hour,
                         endTime.minute,
                       );
+                      // Parse price
+                      final price = double.tryParse(priceController.text);
+
                       // Create appointment for each selected patient
                       for (final patient in selectedPatients) {
                         await DatabaseHelper().insertAppointment(
@@ -287,6 +312,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                             dateTime: startDt,
                             endDateTime: endDt,
                             notes: notesController.text,
+                            price: price,
+                            serviceDescription: serviceDescController.text,
                           ),
                         );
                       }
@@ -386,6 +413,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                           dateTime: existingAppt.dateTime,
                           endDateTime: existingAppt.endDateTime,
                           notes: '',
+                          price: existingAppt.price,
+                          serviceDescription: existingAppt.serviceDescription,
                         ),
                       );
                       Navigator.pop(context);
@@ -397,58 +426,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         ),
       ),
     );
-  }
-
-  /// Handle delete for grouped appointments
-  Future<void> _handleDelete(List<Appointment> appointments) async {
-    if (appointments.length == 1) {
-      await _deleteAppointment(appointments.first.id!);
-    } else {
-      // Show selection dialog for multiple patients
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Remove from Slot'),
-          content: SizedBox(
-            width: 300,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ...appointments.map((a) {
-                  final p = _findPatient(a.patientId);
-                  final name = p != null ? '${p.firstName} ${p.lastName}' : 'Unknown';
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(name),
-                    trailing: IconButton(
-                      icon: Icon(Icons.remove_circle_outline, color: AppColors.errorRed),
-                      onPressed: () async {
-                        await _deleteAppointment(a.id!);
-                        Navigator.pop(context);
-                      },
-                    ),
-                  );
-                }),
-                const Divider(),
-                TextButton(
-                  onPressed: () async {
-                    for (final a in appointments) {
-                      await DatabaseHelper().deleteAppointment(a.id!);
-                    }
-                    Navigator.pop(context);
-                    _loadAppointments();
-                  },
-                  child: Text(
-                    'Remove All',
-                    style: TextStyle(color: AppColors.errorRed),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
   }
 
   @override
@@ -552,34 +529,23 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   }
 
   Widget _buildAppointmentsList(Color primaryColor) {
-    final groups = _groupedAppointments;
+    // Sort appointments by start time
+    final sorted = List<Appointment>.from(_appointmentsForDate)
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
 
     return ListView.builder(
-      itemCount: groups.length,
+      itemCount: sorted.length,
       itemBuilder: (ctx, i) {
-        final appointments = groups[i];
-        return _buildAppointmentCard(appointments, primaryColor);
+        return _buildAppointmentCard(sorted[i], primaryColor);
       },
     );
   }
 
-  Widget _buildAppointmentCard(List<Appointment> appointments, Color primaryColor) {
-    final first = appointments.first;
-
-    // Build comma-separated names
-    final names = appointments.map((a) {
-      final p = _findPatient(a.patientId);
-      return p != null ? '${p.firstName} ${p.lastName}' : 'Unknown';
-    }).join(', ');
-
-    // Combine notes (if any)
-    final allNotes = appointments
-        .where((a) => a.notes.isNotEmpty)
-        .map((a) => a.notes)
-        .toSet() // Remove duplicates
-        .join(' | ');
-
-    final patientCount = appointments.length;
+  Widget _buildAppointmentCard(Appointment appointment, Color primaryColor) {
+    final patient = _findPatient(appointment.patientId);
+    final patientName = patient != null
+        ? '${patient.firstName} ${patient.lastName}'
+        : 'Unknown';
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -603,7 +569,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
             SizedBox(
               width: 140,
               child: Text(
-                _formatTimeRange(first),
+                _formatTimeRange(appointment),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -613,49 +579,22 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
             ),
             const SizedBox(width: AppSpacing.md),
 
-            // Patient names
+            // Patient name and notes
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          names,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (patientCount > 1) ...[
-                        const SizedBox(width: AppSpacing.sm),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.sm,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: primaryColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(AppRadius.sm),
-                          ),
-                          child: Text(
-                            '$patientCount',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: primaryColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  Text(
+                    patientName,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  if (allNotes.isNotEmpty)
+                  if (appointment.notes.isNotEmpty)
                     Text(
-                      allNotes,
+                      appointment.notes,
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
@@ -667,18 +606,18 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               ),
             ),
 
-            // Add person button
+            // Add person button (creates another appointment at same time)
             IconButton(
               icon: const Icon(Icons.person_add_outlined, size: 20),
               tooltip: 'Add Person to Slot',
-              onPressed: () => _addPersonToSlot(first),
+              onPressed: () => _addPersonToSlot(appointment),
             ),
 
             // Delete button
             IconButton(
               icon: const Icon(Icons.delete_outline, size: 20),
-              tooltip: patientCount > 1 ? 'Remove from Slot' : 'Delete Appointment',
-              onPressed: () => _handleDelete(appointments),
+              tooltip: 'Delete Appointment',
+              onPressed: () => _deleteAppointment(appointment.id!),
             ),
           ],
         ),

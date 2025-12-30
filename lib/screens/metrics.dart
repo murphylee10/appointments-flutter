@@ -27,21 +27,42 @@ class _MetricsScreenState extends State<MetricsScreen> {
   double _unitPrice = 40.0;
 
   // Birthday and unpaid visits data
-  List<Patient> _birthdayPatients = [];
+  List<(Patient, int)> _pastWeekBirthdays = [];
+  List<(Patient, int)> _upcomingBirthdays = [];
   List<Map<String, dynamic>> _oldestUnpaid = [];
 
-  // Pagination for unpaid visits
-  static const int _unpaidPageSize = 10;
+  // Pagination for birthday and unpaid lists
+  static const int _pageSize = 5;
+  int _pastBirthdayPage = 0;
+  int _upcomingBirthdayPage = 0;
   int _unpaidPage = 0;
 
+  List<(Patient, int)> get _paginatedPastBirthdays {
+    final start = _pastBirthdayPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _pastWeekBirthdays.length);
+    if (start >= _pastWeekBirthdays.length) return [];
+    return _pastWeekBirthdays.sublist(start, end);
+  }
+
+  int get _totalPastBirthdayPages => (_pastWeekBirthdays.length / _pageSize).ceil().clamp(1, 999);
+
+  List<(Patient, int)> get _paginatedUpcomingBirthdays {
+    final start = _upcomingBirthdayPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _upcomingBirthdays.length);
+    if (start >= _upcomingBirthdays.length) return [];
+    return _upcomingBirthdays.sublist(start, end);
+  }
+
+  int get _totalUpcomingBirthdayPages => (_upcomingBirthdays.length / _pageSize).ceil().clamp(1, 999);
+
   List<Map<String, dynamic>> get _paginatedUnpaid {
-    final start = _unpaidPage * _unpaidPageSize;
-    final end = (start + _unpaidPageSize).clamp(0, _oldestUnpaid.length);
+    final start = _unpaidPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, _oldestUnpaid.length);
     if (start >= _oldestUnpaid.length) return [];
     return _oldestUnpaid.sublist(start, end);
   }
 
-  int get _totalUnpaidPages => (_oldestUnpaid.length / _unpaidPageSize).ceil().clamp(1, 999);
+  int get _totalUnpaidPages => (_oldestUnpaid.length / _pageSize).ceil().clamp(1, 999);
 
   @override
   void initState() {
@@ -83,7 +104,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
     final activePatients = await db.getActivePatientsInRange(start, end);
     final newPatients = await db.getNewPatientsInRange(start, end);
     final activeSeries = await db.getActiveSeriesCount();
-    final birthdayPatients = await db.getPatientsWithBirthdayToday();
+    final pastWeekBirthdays = await db.getPatientsWithBirthdayInPastWeek();
+    final upcomingBirthdays = await db.getPatientsWithBirthdayInNextWeek();
     final oldestUnpaid = await db.getOldestUnpaidAppointments(limit: 100);
 
     setState(() {
@@ -92,7 +114,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
       _activePatientsCount = activePatients;
       _newPatientsCount = newPatients;
       _activeSeriesCount = activeSeries;
-      _birthdayPatients = birthdayPatients;
+      _pastWeekBirthdays = pastWeekBirthdays;
+      _upcomingBirthdays = upcomingBirthdays;
       _oldestUnpaid = oldestUnpaid;
       _loading = false;
     });
@@ -316,7 +339,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           ),
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: AppColors.textSecondary,
             ),
@@ -419,59 +442,210 @@ class _MetricsScreenState extends State<MetricsScreen> {
   }
 
   Widget _buildBirthdayAndUnpaidRow() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       children: [
-        // Unpaid section first (more actionable)
-        Expanded(child: _buildUnpaidCard()),
-        const SizedBox(width: AppSpacing.lg),
-        // Birthday section
-        Expanded(child: _buildBirthdayCard()),
+        // Birthday panels row
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _buildPastBirthdaysCard()),
+            const SizedBox(width: AppSpacing.lg),
+            Expanded(child: _buildUpcomingBirthdaysCard()),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        // Unpaid visits (full width)
+        _buildUnpaidCard(),
       ],
     );
   }
 
-  Widget _buildBirthdayCard() {
+  Widget _buildPastBirthdaysCard() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header with pagination
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(Icons.cake, size: 20, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: AppSpacing.sm),
-                const Text(
-                  'Birthdays Today',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Icon(Icons.cake, size: 20, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(
+                      'Recent Birthdays (${_pastWeekBirthdays.length})',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
+                if (_totalPastBirthdayPages > 1)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left, size: 20),
+                        onPressed: _pastBirthdayPage > 0
+                            ? () => setState(() => _pastBirthdayPage--)
+                            : null,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      Text(
+                        '${_pastBirthdayPage + 1} / $_totalPastBirthdayPages',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right, size: 20),
+                        onPressed: _pastBirthdayPage < _totalPastBirthdayPages - 1
+                            ? () => setState(() => _pastBirthdayPage++)
+                            : null,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                    ],
+                  ),
               ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            const Text(
+              'Past 7 days including today',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: AppSpacing.md),
             if (_loading)
               const Center(child: CircularProgressIndicator())
-            else if (_birthdayPatients.isEmpty)
-              Text(
-                'No birthdays today',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontStyle: FontStyle.italic,
+            else if (_pastWeekBirthdays.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                child: Center(
+                  child: Text(
+                    'No recent birthdays',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
                 ),
               )
             else
-              ..._birthdayPatients.map((patient) => _buildBirthdayItem(patient)),
+              ..._paginatedPastBirthdays.map((entry) => _buildBirthdayItem(entry.$1, entry.$2, isPast: true)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBirthdayItem(Patient patient) {
-    final age = _calculateAge(patient.dob);
+  Widget _buildUpcomingBirthdaysCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with pagination
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.cake_outlined, size: 20, color: AppColors.infoBlue),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(
+                      'Upcoming Birthdays (${_upcomingBirthdays.length})',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                if (_totalUpcomingBirthdayPages > 1)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left, size: 20),
+                        onPressed: _upcomingBirthdayPage > 0
+                            ? () => setState(() => _upcomingBirthdayPage--)
+                            : null,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      Text(
+                        '${_upcomingBirthdayPage + 1} / $_totalUpcomingBirthdayPages',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right, size: 20),
+                        onPressed: _upcomingBirthdayPage < _totalUpcomingBirthdayPages - 1
+                            ? () => setState(() => _upcomingBirthdayPage++)
+                            : null,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            const Text(
+              'Next 7 days',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            if (_loading)
+              const Center(child: CircularProgressIndicator())
+            else if (_upcomingBirthdays.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                child: Center(
+                  child: Text(
+                    'No upcoming birthdays',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ..._paginatedUpcomingBirthdays.map((entry) => _buildBirthdayItem(entry.$1, entry.$2, isPast: false)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBirthdayItem(Patient patient, int daysDiff, {required bool isPast}) {
+    final age = _calculateAge(patient.dob, daysDiff: daysDiff, isPast: isPast);
+
+    String subtitle;
+    if (isPast) {
+      if (daysDiff == 0) {
+        subtitle = age != null ? 'Today! Turning $age' : 'Today!';
+      } else if (daysDiff == 1) {
+        subtitle = age != null ? 'Yesterday • Turned $age' : 'Yesterday';
+      } else {
+        subtitle = age != null ? '$daysDiff days ago • Turned $age' : '$daysDiff days ago';
+      }
+    } else {
+      if (daysDiff == 1) {
+        subtitle = age != null ? 'Tomorrow • Turning $age' : 'Tomorrow';
+      } else {
+        subtitle = age != null ? 'In $daysDiff days • Turning $age' : 'In $daysDiff days';
+      }
+    }
+
     return InkWell(
       onTap: () async {
         await Navigator.of(context).push(
@@ -488,13 +662,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
           children: [
             CircleAvatar(
               radius: 16,
-              backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+              backgroundColor: (isPast ? Theme.of(context).colorScheme.primary : AppColors.infoBlue).withValues(alpha: 0.1),
               child: Text(
                 patient.firstName.isNotEmpty ? patient.firstName[0].toUpperCase() : '?',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: isPast ? Theme.of(context).colorScheme.primary : AppColors.infoBlue,
                 ),
               ),
             ),
@@ -510,31 +684,33 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  if (age != null)
-                    Text(
-                      'Turning $age',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
                     ),
+                  ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, size: 18, color: AppColors.textSecondary),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textSecondary),
           ],
         ),
       ),
     );
   }
 
-  int? _calculateAge(String? dob) {
+  int? _calculateAge(String? dob, {required int daysDiff, required bool isPast}) {
     if (dob == null || dob.isEmpty) return null;
     try {
       final birthDate = DateTime.parse(dob);
-      final today = DateTime.now();
-      int age = today.year - birthDate.year;
-      // Since it's their birthday today, they're turning this age
+      final now = DateTime.now();
+      // Calculate age on the birthday date
+      final birthdayDate = isPast
+          ? now.subtract(Duration(days: daysDiff))
+          : now.add(Duration(days: daysDiff));
+      int age = birthdayDate.year - birthDate.year;
       return age;
     } catch (_) {
       return null;
@@ -554,7 +730,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.pending_actions, size: 20, color: AppColors.warningAmber),
+                    const Icon(Icons.pending_actions, size: 20, color: AppColors.warningAmber),
                     const SizedBox(width: AppSpacing.sm),
                     Text(
                       'Oldest Unpaid Visits (${_oldestUnpaid.length})',
@@ -580,7 +756,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       ),
                       Text(
                         '${_unpaidPage + 1} / $_totalUnpaidPages',
-                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                       IconButton(
                         icon: const Icon(Icons.chevron_right, size: 20),
@@ -599,8 +775,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
             if (_loading)
               const Center(child: CircularProgressIndicator())
             else if (_oldestUnpaid.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
                 child: Center(
                   child: Text(
                     'No unpaid visits',
@@ -624,7 +800,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       color: AppColors.surfaceVariant,
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
                         Expanded(
                           flex: 2,
@@ -637,7 +813,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                         Expanded(
                           child: Text('Days Ago', textAlign: TextAlign.right, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
                         ),
-                        const SizedBox(width: 32), // Space for chevron
+                        SizedBox(width: 32), // Space for chevron
                       ],
                     ),
                   ),
@@ -708,7 +884,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
-            Icon(Icons.chevron_right, size: 18, color: AppColors.textSecondary),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -778,7 +954,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                   padding: const EdgeInsets.only(top: AppSpacing.sm),
                                   child: Text(
                                     data[index].$1,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: AppColors.textSecondary,
                                     ),
@@ -797,7 +973,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                             getTitlesWidget: (value, meta) {
                               return Text(
                                 value.toInt().toString(),
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textSecondary,
                                 ),
@@ -816,7 +992,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                         show: true,
                         drawVerticalLine: false,
                         horizontalInterval: maxY > 0 ? (maxY / 4).ceilToDouble() : 2,
-                        getDrawingHorizontalLine: (value) => FlLine(
+                        getDrawingHorizontalLine: (value) => const FlLine(
                           color: AppColors.borderLight,
                           strokeWidth: 1,
                         ),
