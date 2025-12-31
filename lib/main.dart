@@ -12,12 +12,20 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
+  try {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  } catch (e) {
+    debugPrint('SQLite init error: $e');
+  }
 
-  // Initialize window manager for close intercept
-  await windowManager.ensureInitialized();
-  await windowManager.setPreventClose(true);
+  try {
+    // Initialize window manager for close intercept
+    await windowManager.ensureInitialized();
+    await windowManager.setPreventClose(true);
+  } catch (e) {
+    debugPrint('Window manager error: $e');
+  }
 
   runApp(const MyApp());
 }
@@ -55,20 +63,32 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
+    try {
+      windowManager.addListener(this);
+    } catch (e) {
+      debugPrint('Window listener error: $e');
+    }
   }
 
   @override
   void dispose() {
-    windowManager.removeListener(this);
+    try {
+      windowManager.removeListener(this);
+    } catch (e) {
+      debugPrint('Window dispose error: $e');
+    }
     super.dispose();
   }
 
   @override
   void onWindowClose() async {
-    // Perform auto-backup before closing
-    await BackupHelper.autoBackup();
-    await windowManager.destroy();
+    try {
+      // Perform auto-backup before closing
+      await BackupHelper.autoBackup();
+      await windowManager.destroy();
+    } catch (e) {
+      debugPrint('Window close error: $e');
+    }
   }
 
   void _onItemTapped(int index) {
