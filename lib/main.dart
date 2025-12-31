@@ -23,6 +23,8 @@ void main() async {
     // Initialize window manager for close intercept
     await windowManager.ensureInitialized();
     await windowManager.setPreventClose(true);
+    await windowManager.setMinimumSize(const Size(1024, 600));
+    await windowManager.maximize();
   } catch (e) {
     debugPrint('Window manager error: $e');
   }
