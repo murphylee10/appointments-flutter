@@ -79,7 +79,12 @@ class _PatientsScreenState extends State<PatientsScreen> {
     final path = result.files.single.path;
     if (path == null) return;
 
-    final content = await File(path).readAsString();
+    var content = await File(path).readAsString();
+    // Strip BOM if present and normalize line endings
+    if (content.startsWith('\uFEFF')) {
+      content = content.substring(1);
+    }
+    content = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     final rows = const CsvToListConverter().convert(content, eol: '\n');
     if (rows.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,15 +95,16 @@ class _PatientsScreenState extends State<PatientsScreen> {
 
     for (var i = 1; i < rows.length; i++) {
       final row = rows[i];
-      if (row.length < 7) continue;
+      if (row.length < 8) continue;
       final p = Patient(
         firstName: row[0]?.toString() ?? '',
         middleName: row[1]?.toString().isEmpty == true ? null : row[1]?.toString(),
         lastName: row[2]?.toString() ?? '',
-        gender: row[3]?.toString() ?? '',
-        dob: row[4]?.toString() ?? '',
-        email: row[5]?.toString() ?? '',
-        phone: row[6]?.toString() ?? '',
+        gender: row[3]?.toString().isEmpty == true ? null : row[3]?.toString(),
+        dob: row[4]?.toString().isEmpty == true ? null : row[4]?.toString(),
+        email: row[5]?.toString().isEmpty == true ? null : row[5]?.toString(),
+        phone: row[6]?.toString().isEmpty == true ? null : row[6]?.toString(),
+        address: row[7]?.toString().isEmpty == true ? null : row[7]?.toString(),
       );
       await DatabaseHelper().insertPatient(p);
     }
