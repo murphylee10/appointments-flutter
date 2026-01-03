@@ -2,14 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import '../utils/database_helper.dart';
 import '../models/patient.dart';
 import '../models/appointment.dart';
 import '../models/receipt.dart';
 
 class ReceiptHelper {
-  /// Prompts for a folder, writes the HTML receipt there,
+  /// Opens a save dialog, writes the HTML receipt to the selected path,
   /// then records it in the `receipts` and `receipt_items` tables.
   static Future<void> generateHtmlReceipt({
     required BuildContext context,
@@ -25,11 +24,18 @@ class ReceiptHelper {
     final addressLine2 = settings[SettingsKeys.addressLine2] ?? '';
     final defaultServiceDescription = settings[SettingsKeys.serviceDescription] ?? 'Service';
 
-    // 2) Let the user pick a folder
-    final selectedDir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Select a folder to save the receipt',
+    // 2) Let the user pick save location
+    final timestamp = DateFormat('yyyy-MM-dd_HHmmss').format(DateTime.now());
+    final patientName = '${patient.firstName} ${patient.lastName}';
+    final defaultFileName = '$patientName - $timestamp.html';
+
+    final savedPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save receipt',
+      fileName: defaultFileName,
+      type: FileType.custom,
+      allowedExtensions: ['html'],
     );
-    if (selectedDir == null) return; // user cancelled
+    if (savedPath == null) return; // user cancelled
 
     // 3) Build HTML
     final dateFormatter = DateFormat.yMMMd();
@@ -102,10 +108,7 @@ class ReceiptHelper {
 ''';
 
     // 4) Write file
-    final timestamp = DateFormat('yyyy-MM-dd_HHmmss').format(DateTime.now());
-    final patientName = '${patient.firstName} ${patient.lastName}';
-    final fileName = '$patientName - $timestamp.html';
-    final file = File('$selectedDir/$fileName');
+    final file = File(savedPath);
     await file.writeAsString(html);
 
     // 5) Record in database
@@ -119,8 +122,10 @@ class ReceiptHelper {
     await db.insertReceipt(receipt);
 
     // 6) Feedback to user
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Receipt saved & recorded at ${file.path}')),
-    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Receipt saved & recorded at ${file.path}')),
+      );
+    }
   }
 }

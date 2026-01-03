@@ -48,7 +48,7 @@ class PatientSearchDelegate extends SearchDelegate<Patient?> {
         final p = matches[i];
         return ListTile(
           title: Text('${p.firstName} ${p.lastName}'),
-          subtitle: Text('${p.email} • ${p.phone}'),
+          subtitle: Text(p.phone?.isNotEmpty == true ? p.phone! : '(No phone number)'),
           onTap: () => close(context, p),
         );
       },
