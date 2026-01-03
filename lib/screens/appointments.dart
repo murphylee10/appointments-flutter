@@ -4,6 +4,7 @@ import '../utils/database_helper.dart';
 import '../models/appointment.dart';
 import '../models/patient.dart';
 import '../theme/app_theme.dart';
+import 'patient_profile.dart';
 
 /// A SearchDelegate to find patients by name/email/phone.
 class PatientSearchDelegate extends SearchDelegate<Patient?> {
@@ -584,13 +585,29 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    patientName,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  MouseRegion(
+                    cursor: patient != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+                    child: GestureDetector(
+                      onTap: patient != null
+                          ? () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PatientProfileScreen(patient: patient),
+                                ),
+                              );
+                            }
+                          : null,
+                      child: Text(
+                        patientName,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: patient != null ? Theme.of(context).colorScheme.primary : null,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
                   if (appointment.notes.isNotEmpty)
                     Text(

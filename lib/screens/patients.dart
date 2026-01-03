@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../utils/database_helper.dart';
 import '../models/patient.dart';
@@ -161,13 +162,28 @@ class _PatientsScreenState extends State<PatientsScreen> {
                     validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  DropdownButtonFormField<String>(
-                    value: gender,
-                    decoration: const InputDecoration(labelText: 'Gender'),
-                    items: ['M', 'F']
-                        .map((g) => DropdownMenuItem(value: g, child: Text(g)))
-                        .toList(),
-                    onChanged: (v) => setState(() => gender = v),
+                  Focus(
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        final key = event.character?.toUpperCase();
+                        if (key == 'M') {
+                          setState(() => gender = 'M');
+                          return KeyEventResult.handled;
+                        } else if (key == 'F') {
+                          setState(() => gender = 'F');
+                          return KeyEventResult.handled;
+                        }
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: DropdownButtonFormField<String>(
+                      value: gender,
+                      decoration: const InputDecoration(labelText: 'Gender'),
+                      items: ['M', 'F']
+                          .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                          .toList(),
+                      onChanged: (v) => setState(() => gender = v),
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   TextFormField(
