@@ -107,13 +107,20 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
 
   /// Schedule a new appointment for this patient
   Future<void> _scheduleAppointment() async {
-    // Load default duration from settings
+    // Load settings for defaults
     final settings = await DatabaseHelper().getAllSettings();
     final defaultDuration = int.tryParse(settings[SettingsKeys.defaultAppointmentDuration] ?? '40') ?? 40;
 
     DateTime selectedDate = DateTime.now();
     TimeOfDay startTime = const TimeOfDay(hour: 13, minute: 0);
     TimeOfDay endTime = _computeEndTime(startTime, defaultDuration);
+    final notesController = TextEditingController();
+    final priceController = TextEditingController(
+      text: settings[SettingsKeys.unitPrice] ?? '40.0',
+    );
+    final serviceDescController = TextEditingController(
+      text: settings[SettingsKeys.serviceDescription] ?? 'Chiropractic adjustment',
+    );
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -122,89 +129,127 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
           title: const Text('Schedule Appointment'),
           content: SizedBox(
             width: 400,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Patient: ${_patient.firstName} ${_patient.lastName}',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                // Date picker
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.calendar_today),
-                  title: const Text('Date'),
-                  subtitle: Text(DateFormat.yMMMd().format(selectedDate)),
-                  onTap: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (date != null) {
-                      setDialogState(() => selectedDate = date);
-                    }
-                  },
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                // Time pickers row
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () async {
-                          final picked = await showTimePicker(
-                            context: context,
-                            initialTime: startTime,
-                          );
-                          if (picked != null) {
-                            setDialogState(() {
-                              startTime = picked;
-                              endTime = _computeEndTime(picked, defaultDuration);
-                            });
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Start Time',
-                            suffixIcon: Icon(Icons.access_time, size: 20),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Patient: ${_patient.firstName} ${_patient.lastName}',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  // Date picker
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.calendar_today),
+                    title: const Text('Date'),
+                    subtitle: Text(DateFormat.yMMMd().format(selectedDate)),
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (date != null) {
+                        setDialogState(() => selectedDate = date);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  // Time pickers row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: startTime,
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                startTime = picked;
+                                endTime = _computeEndTime(picked, defaultDuration);
+                              });
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Start Time',
+                              suffixIcon: Icon(Icons.access_time, size: 20),
+                            ),
+                            child: Text(startTime.format(context)),
                           ),
-                          child: Text(startTime.format(context)),
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                      child: Icon(Icons.arrow_forward, color: AppColors.textSecondary, size: 20),
-                    ),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () async {
-                          final picked = await showTimePicker(
-                            context: context,
-                            initialTime: endTime,
-                          );
-                          if (picked != null) {
-                            setDialogState(() {
-                              endTime = picked;
-                            });
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'End Time',
-                            suffixIcon: Icon(Icons.access_time, size: 20),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                        child: Icon(Icons.arrow_forward, color: AppColors.textSecondary, size: 20),
+                      ),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: endTime,
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                endTime = picked;
+                              });
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'End Time',
+                              suffixIcon: Icon(Icons.access_time, size: 20),
+                            ),
+                            child: Text(endTime.format(context)),
                           ),
-                          child: Text(endTime.format(context)),
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  // Notes field
+                  TextFormField(
+                    controller: notesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
                     ),
-                  ],
-                ),
-              ],
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  // Price and service description row
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: TextFormField(
+                          controller: priceController,
+                          decoration: const InputDecoration(
+                            labelText: 'Price',
+                            prefixText: '\$ ',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: serviceDescController,
+                          decoration: const InputDecoration(
+                            labelText: 'Service Description',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -237,12 +282,15 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
         endTime.hour,
         endTime.minute,
       );
+      final price = double.tryParse(priceController.text);
       await DatabaseHelper().insertAppointment(
         Appointment(
           patientId: _patient.id!,
           dateTime: startDt,
           endDateTime: endDt,
-          notes: '',
+          notes: notesController.text,
+          price: price,
+          serviceDescription: serviceDescController.text,
         ),
       );
       await _loadData();
@@ -254,6 +302,265 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
             ),
           ),
         );
+      }
+    }
+  }
+
+  /// Edit an existing appointment
+  Future<void> _editAppointment(Appointment appointment) async {
+    // Load default values from settings
+    final settings = await DatabaseHelper().getAllSettings();
+    final defaultPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
+    final defaultServiceDesc = settings[SettingsKeys.serviceDescription] ?? 'Chiropractic adjustment';
+
+    DateTime selectedDate = DateTime(
+      appointment.dateTime.year,
+      appointment.dateTime.month,
+      appointment.dateTime.day,
+    );
+    TimeOfDay startTime = TimeOfDay.fromDateTime(appointment.dateTime);
+    TimeOfDay endTime = appointment.endDateTime != null
+        ? TimeOfDay.fromDateTime(appointment.endDateTime!)
+        : _computeEndTime(startTime, 40);
+
+    final notesController = TextEditingController(text: appointment.notes);
+    final priceController = TextEditingController(
+      text: (appointment.price ?? defaultPrice).toStringAsFixed(2),
+    );
+    final serviceDescController = TextEditingController(
+      text: appointment.serviceDescription ?? defaultServiceDesc,
+    );
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Appointment'),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Patient: ${_patient.firstName} ${_patient.lastName}',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  // Date picker
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.calendar_today),
+                    title: const Text('Date'),
+                    subtitle: Text(DateFormat.yMMMd().format(selectedDate)),
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                      );
+                      if (date != null) {
+                        setDialogState(() => selectedDate = date);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  // Time pickers row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: startTime,
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                startTime = picked;
+                              });
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Start Time',
+                              suffixIcon: Icon(Icons.access_time, size: 20),
+                            ),
+                            child: Text(startTime.format(context)),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                        child: Icon(Icons.arrow_forward, color: AppColors.textSecondary, size: 20),
+                      ),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: endTime,
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                endTime = picked;
+                              });
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'End Time',
+                              suffixIcon: Icon(Icons.access_time, size: 20),
+                            ),
+                            child: Text(endTime.format(context)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  // Notes field
+                  TextFormField(
+                    controller: notesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  // Price and service description row
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: TextFormField(
+                          controller: priceController,
+                          decoration: const InputDecoration(
+                            labelText: 'Price',
+                            prefixText: '\$ ',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: serviceDescController,
+                          decoration: const InputDecoration(
+                            labelText: 'Service Description',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.spaceBetween,
+          actions: [
+            // Delete button on the left
+            TextButton.icon(
+              onPressed: () => Navigator.pop(context, 'delete'),
+              icon: Icon(Icons.delete_outline, size: 18, color: AppColors.errorRed),
+              label: Text('Delete', style: TextStyle(color: AppColors.errorRed)),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, 'save'),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'save') {
+      final startDt = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        startTime.hour,
+        startTime.minute,
+      );
+      final endDt = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        endTime.hour,
+        endTime.minute,
+      );
+      final price = double.tryParse(priceController.text);
+      final updated = Appointment(
+        id: appointment.id,
+        patientId: appointment.patientId,
+        dateTime: startDt,
+        endDateTime: endDt,
+        notes: notesController.text,
+        paid: appointment.paid,
+        seriesId: appointment.seriesId,
+        price: price,
+        serviceDescription: serviceDescController.text,
+      );
+      await DatabaseHelper().updateAppointment(updated);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Appointment updated to ${DateFormat.yMMMd().format(startDt)} @ ${startTime.format(context)}',
+            ),
+          ),
+        );
+      }
+    } else if (result == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: AppColors.errorRed, size: 24),
+              const SizedBox(width: AppSpacing.sm),
+              const Text('Delete Appointment'),
+            ],
+          ),
+          content: Text(
+            'Delete the appointment on ${DateFormat.yMMMd().format(appointment.dateTime)}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.errorRed),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) {
+        await DatabaseHelper().deleteAppointment(appointment.id!);
+        await _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Appointment deleted')),
+          );
+        }
       }
     }
   }
@@ -554,6 +861,28 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
           ),
         ),
         actions: [
+          // Mark as Paid button
+          TextButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              final db = DatabaseHelper();
+              for (final appointment in receiptAppointments) {
+                if (!appointment.paid) {
+                  await db.updateAppointmentPaid(appointment.id!, true);
+                }
+              }
+              await _loadData();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${receiptAppointments.length} appointment${receiptAppointments.length == 1 ? '' : 's'} marked as paid'),
+                  ),
+                );
+              }
+            },
+            icon: Icon(Icons.check_circle_outline, size: 18, color: AppColors.successGreen),
+            label: Text('Mark as Paid', style: TextStyle(color: AppColors.successGreen)),
+          ),
           // Reprint button
           TextButton.icon(
             onPressed: () async {
@@ -1320,57 +1649,67 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
       final dateStr = DateFormat.yMMMd().format(appointment.dateTime);
       final timeStr = TimeOfDay.fromDateTime(appointment.dateTime).format(context);
 
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$dateStr @ $timeStr',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  if (appointment.notes.isNotEmpty)
+      return InkWell(
+        onTap: () => _editAppointment(appointment),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm, horizontal: AppSpacing.xs),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      appointment.notes.length > 50
-                          ? '${appointment.notes.substring(0, 50)}...'
-                          : appointment.notes,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
+                      '$dateStr @ $timeStr',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                ],
-              ),
-            ),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.xs,
-              ),
-              decoration: BoxDecoration(
-                color: appointment.paid
-                    ? AppColors.successGreen.withOpacity(0.1)
-                    : AppColors.warningAmber.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-              ),
-              child: Text(
-                appointment.paid ? 'Paid' : 'Unpaid',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: appointment.paid
-                      ? AppColors.successGreen
-                      : AppColors.warningAmber,
+                    if (appointment.notes.isNotEmpty)
+                      Text(
+                        appointment.notes.length > 50
+                            ? '${appointment.notes.substring(0, 50)}...'
+                            : appointment.notes,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            ),
-          ],
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: appointment.paid
+                      ? AppColors.successGreen.withOpacity(0.1)
+                      : AppColors.warningAmber.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Text(
+                  appointment.paid ? 'Paid' : 'Unpaid',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: appointment.paid
+                        ? AppColors.successGreen
+                        : AppColors.warningAmber,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
         ),
       );
     }).toList();

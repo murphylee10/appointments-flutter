@@ -11,10 +11,12 @@ class SettingsKeys {
   static const clinicName = 'clinic_name';
   static const addressLine1 = 'address_line1';
   static const addressLine2 = 'address_line2';
+  static const clinicPhone = 'clinic_phone';
   static const unitPrice = 'unit_price';
   static const serviceDescription = 'service_description';
   static const defaultAppointmentDuration = 'default_appointment_duration';
   static const lastBackupDate = 'last_backup_date';
+  static const receiptFooterText = 'receipt_footer_text';
 }
 
 /// Default settings values (used on first launch)
@@ -22,9 +24,11 @@ const defaultSettings = {
   SettingsKeys.clinicName: 'Markham Chiropractic',
   SettingsKeys.addressLine1: '123 Main St.',
   SettingsKeys.addressLine2: 'Markham, ON L3R 1X5',
+  SettingsKeys.clinicPhone: '',
   SettingsKeys.unitPrice: '40.0',
   SettingsKeys.serviceDescription: 'Chiropractic adjustment',
   SettingsKeys.defaultAppointmentDuration: '40',
+  SettingsKeys.receiptFooterText: '',
 };
 
 class DatabaseHelper {

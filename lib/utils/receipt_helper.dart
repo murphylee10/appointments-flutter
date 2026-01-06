@@ -22,7 +22,9 @@ class ReceiptHelper {
     final clinicName = settings[SettingsKeys.clinicName] ?? 'Clinic';
     final addressLine1 = settings[SettingsKeys.addressLine1] ?? '';
     final addressLine2 = settings[SettingsKeys.addressLine2] ?? '';
+    final clinicPhone = settings[SettingsKeys.clinicPhone] ?? '';
     final defaultServiceDescription = settings[SettingsKeys.serviceDescription] ?? 'Service';
+    final receiptFooterText = settings[SettingsKeys.receiptFooterText] ?? '';
 
     // 2) Let the user pick save location
     final timestamp = DateFormat('yyyy-MM-dd_HHmmss').format(DateTime.now());
@@ -39,7 +41,6 @@ class ReceiptHelper {
 
     // 3) Build HTML
     final dateFormatter = DateFormat.yMMMd();
-    final timeFormatter = DateFormat.jm();
 
     // Calculate total using each appointment's individual price
     final total = appointments.fold<double>(
@@ -49,18 +50,24 @@ class ReceiptHelper {
 
     final rows = appointments.map((a) {
       final d = dateFormatter.format(a.dateTime);
-      final t = timeFormatter.format(a.dateTime);
       final price = a.price ?? defaultPrice;
       final serviceDesc = a.serviceDescription ?? defaultServiceDescription;
       return '''
       <tr>
         <td>$d</td>
-        <td>$t</td>
         <td>\$${price.toStringAsFixed(2)}</td>
         <td>$serviceDesc</td>
       </tr>
       ''';
     }).join();
+
+    // Build phone line only if provided
+    final phoneLine = clinicPhone.isNotEmpty ? 'Tel: $clinicPhone<br>' : '';
+
+    // Build footer section only if provided
+    final footerSection = receiptFooterText.isNotEmpty
+        ? '<div class="footer">$receiptFooterText</div>'
+        : '';
 
     final html = '''
 <!DOCTYPE html>
@@ -77,13 +84,15 @@ class ReceiptHelper {
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
     th { background: #f9f9f9; }
     tfoot td { font-weight: bold; }
+    .footer { margin-top: 30px; color: #555; font-size: 1.1em; }
   </style>
 </head>
 <body>
   <h1>$clinicName</h1>
   <div class="address">
     $addressLine1<br>
-    $addressLine2
+    $addressLine2<br>
+    $phoneLine
   </div>
   <div class="patient">
     <strong>Patient:</strong> ${patient.firstName} ${patient.lastName}<br>
@@ -91,18 +100,19 @@ class ReceiptHelper {
   </div>
   <table>
     <thead>
-      <tr><th>Date</th><th>Time</th><th>Charge</th><th>Service</th></tr>
+      <tr><th>Date</th><th>Charge</th><th>Service</th></tr>
     </thead>
     <tbody>
       $rows
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="2">Total</td>
+        <td>Total</td>
         <td colspan="2">\$${total.toStringAsFixed(2)}</td>
       </tr>
     </tfoot>
   </table>
+  $footerSection
 </body>
 </html>
 ''';

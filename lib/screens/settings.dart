@@ -15,9 +15,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _clinicNameController = TextEditingController();
   final _addressLine1Controller = TextEditingController();
   final _addressLine2Controller = TextEditingController();
+  final _clinicPhoneController = TextEditingController();
   final _unitPriceController = TextEditingController();
   final _serviceDescriptionController = TextEditingController();
   final _defaultDurationController = TextEditingController();
+  final _receiptFooterTextController = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
@@ -34,9 +36,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _clinicNameController.dispose();
     _addressLine1Controller.dispose();
     _addressLine2Controller.dispose();
+    _clinicPhoneController.dispose();
     _unitPriceController.dispose();
     _serviceDescriptionController.dispose();
     _defaultDurationController.dispose();
+    _receiptFooterTextController.dispose();
     super.dispose();
   }
 
@@ -47,9 +51,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _clinicNameController.text = settings[SettingsKeys.clinicName] ?? '';
       _addressLine1Controller.text = settings[SettingsKeys.addressLine1] ?? '';
       _addressLine2Controller.text = settings[SettingsKeys.addressLine2] ?? '';
+      _clinicPhoneController.text = settings[SettingsKeys.clinicPhone] ?? '';
       _unitPriceController.text = settings[SettingsKeys.unitPrice] ?? '';
       _serviceDescriptionController.text = settings[SettingsKeys.serviceDescription] ?? '';
       _defaultDurationController.text = settings[SettingsKeys.defaultAppointmentDuration] ?? '40';
+      _receiptFooterTextController.text = settings[SettingsKeys.receiptFooterText] ?? '';
       _lastBackupDisplay = lastBackup;
       _loading = false;
     });
@@ -64,9 +70,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       SettingsKeys.clinicName: _clinicNameController.text,
       SettingsKeys.addressLine1: _addressLine1Controller.text,
       SettingsKeys.addressLine2: _addressLine2Controller.text,
+      SettingsKeys.clinicPhone: _clinicPhoneController.text,
       SettingsKeys.unitPrice: _unitPriceController.text,
       SettingsKeys.serviceDescription: _serviceDescriptionController.text,
       SettingsKeys.defaultAppointmentDuration: _defaultDurationController.text,
+      SettingsKeys.receiptFooterText: _receiptFooterTextController.text,
     });
 
     setState(() => _saving = false);
@@ -139,6 +147,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           hintText: 'City, Province, Postal Code',
                         ),
                       ),
+                      const SizedBox(height: AppSpacing.md),
+                      TextFormField(
+                        controller: _clinicPhoneController,
+                        decoration: const InputDecoration(
+                          labelText: 'Telephone',
+                          hintText: 'e.g., (905) 555-1234',
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -193,6 +209,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           labelText: 'Service Description',
                           hintText: 'e.g., Chiropractic adjustment',
                         ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      TextFormField(
+                        controller: _receiptFooterTextController,
+                        decoration: const InputDecoration(
+                          labelText: 'Receipt Footer Text',
+                          hintText: 'Custom message at bottom of receipts',
+                        ),
+                        maxLines: 2,
                       ),
                     ],
                   ),
