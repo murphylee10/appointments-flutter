@@ -14,7 +14,9 @@ class ReceiptHelper {
     required BuildContext context,
     required Patient patient,
     required List<Appointment> appointments,
+    DateTime? receiptDate,
   }) async {
+    final effectiveReceiptDate = receiptDate ?? DateTime.now();
     // 1) Load settings from database (used as fallback for appointments without price/description)
     final db = DatabaseHelper();
     final settings = await db.getAllSettings();
@@ -27,7 +29,7 @@ class ReceiptHelper {
     final receiptFooterText = settings[SettingsKeys.receiptFooterText] ?? '';
 
     // 2) Let the user pick save location
-    final timestamp = DateFormat('yyyy-MM-dd_HHmmss').format(DateTime.now());
+    final timestamp = DateFormat('yyyy-MM-dd_HHmmss').format(effectiveReceiptDate);
     final patientName = '${patient.firstName} ${patient.lastName}';
     final defaultFileName = '$patientName - $timestamp.html';
 
@@ -48,7 +50,11 @@ class ReceiptHelper {
       (sum, a) => sum + (a.price ?? defaultPrice),
     );
 
-    final rows = appointments.map((a) {
+    // Sort appointments by date ascending (earliest first) for the receipt
+    final sortedAppointments = List<Appointment>.from(appointments)
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+    final rows = sortedAppointments.map((a) {
       final d = dateFormatter.format(a.dateTime);
       final price = a.price ?? defaultPrice;
       final serviceDesc = a.serviceDescription ?? defaultServiceDescription;
@@ -96,7 +102,7 @@ class ReceiptHelper {
   </div>
   <div class="patient">
     <strong>Patient:</strong> ${patient.firstName} ${patient.lastName}<br>
-    <strong>Date:</strong> ${dateFormatter.format(DateTime.now())}
+    <strong>Date:</strong> ${dateFormatter.format(effectiveReceiptDate)}
   </div>
   <table>
     <thead>
@@ -108,7 +114,7 @@ class ReceiptHelper {
     <tfoot>
       <tr>
         <td>Total</td>
-        <td colspan="2">\$${total.toStringAsFixed(2)}</td>
+        <td colspan="2">\$${total.toStringAsFixed(2)} (paid)</td>
       </tr>
     </tfoot>
   </table>
@@ -125,7 +131,7 @@ class ReceiptHelper {
     final receipt = Receipt(
       id: 0, // dummy, will be replaced by insertReceipt
       patientId: patient.id!,
-      dateTime: DateTime.now(),
+      dateTime: effectiveReceiptDate,
       filePath: file.path,
       appointmentIds: appointments.map((a) => a.id!).toList(),
     );

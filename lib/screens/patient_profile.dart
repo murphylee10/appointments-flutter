@@ -576,21 +576,22 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     }
 
     // Show selection dialog
-    final selectedAppointments = await _showReceiptSelectionDialog(unpaid);
-    if (selectedAppointments == null || selectedAppointments.isEmpty) {
+    final result = await _showReceiptSelectionDialog(unpaid);
+    if (result == null || result.appointments.isEmpty) {
       return; // User cancelled or selected nothing
     }
 
     await ReceiptHelper.generateHtmlReceipt(
       context: context,
       patient: _patient,
-      appointments: selectedAppointments,
+      appointments: result.appointments,
+      receiptDate: result.receiptDate,
     );
     await _loadData(); // Reload to show new receipt
   }
 
   /// Show dialog to select which appointments to include in receipt
-  Future<List<Appointment>?> _showReceiptSelectionDialog(List<Appointment> unpaid) async {
+  Future<({List<Appointment> appointments, DateTime receiptDate})?> _showReceiptSelectionDialog(List<Appointment> unpaid) async {
     // Load default price from settings (fallback for appointments without price)
     final settings = await DatabaseHelper().getAllSettings();
     final defaultPrice = double.tryParse(settings[SettingsKeys.unitPrice] ?? '') ?? 40.0;
@@ -604,7 +605,10 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
       sorted.map((a) => MapEntry(a.id!, true)),
     );
 
-    return showDialog<List<Appointment>>(
+    // Receipt date - defaults to today
+    var receiptDate = DateTime.now();
+
+    return showDialog<({List<Appointment> appointments, DateTime receiptDate})>(
       context: context,
       builder: (_) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -713,6 +717,44 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ),
+                  const SizedBox(height: AppSpacing.md),
+                  // Receipt date picker
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: receiptDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          receiptDate = picked;
+                        });
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.border),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_today, size: 18),
+                          const SizedBox(width: AppSpacing.sm),
+                          Text(
+                            'Receipt Date: ${DateFormat.yMMMd().format(receiptDate)}',
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          const Spacer(),
+                          Icon(Icons.edit, size: 16, color: AppColors.textSecondary),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -725,10 +767,10 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
               ElevatedButton(
                 onPressed: selectedCount > 0
                     ? () {
-                        final result = sorted
+                        final appointments = sorted
                             .where((a) => selected[a.id] == true)
                             .toList();
-                        Navigator.pop(context, result);
+                        Navigator.pop(context, (appointments: appointments, receiptDate: receiptDate));
                       }
                     : null,
                 child: const Text('Generate Receipt'),
